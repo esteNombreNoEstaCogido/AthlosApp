@@ -49,28 +49,9 @@ import {
   BarChart2,
   Brain,
   Loader2,
-  LogOut
+  LogOut,
+  FileText
 } from "lucide-react";
-
-// ==========================================
-// FUNCIÓN SEGURA PARA EVITAR PANTALLAS BLANCAS
-// ==========================================
-const safeJSONParse = (key, fallback) => {
-  try {
-    const item = localStorage.getItem(key);
-    return item && item !== "undefined" ? JSON.parse(item) : fallback;
-  } catch (e) { return fallback; }
-};
-
-const getSavedUser = () => {
-  try {
-    const local = localStorage.getItem("athlos_user_session_v33");
-    if (local && local !== "undefined") return JSON.parse(local);
-    const session = sessionStorage.getItem("athlos_user_session_v33");
-    if (session && session !== "undefined") return JSON.parse(session);
-  } catch (e) { return null; }
-  return null;
-};
 
 // ==========================================
 // CONFIGURACIÓN FIREBASE
@@ -90,9 +71,30 @@ const db_cloud = getFirestore(app);
 const COLLECTION_NAME = "athlos_clients";
 
 // ==========================================
+// FUNCIONES DE UTILIDAD PROTEGIDAS
+// ==========================================
+
+const safeJSONParse = (key, fallback) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item && item !== "undefined" ? JSON.parse(item) : fallback;
+  } catch (e) { return fallback; }
+};
+
+const getSavedUser = () => {
+  try {
+    const local = localStorage.getItem("athlos_user_session_v36");
+    if (local && local !== "undefined") return JSON.parse(local);
+    const session = sessionStorage.getItem("athlos_user_session_v36");
+    if (session && session !== "undefined") return JSON.parse(session);
+  } catch (e) { return null; }
+  return null;
+};
+
+// ==========================================
 // CONFIGURACIÓN GEMINI API
 // ==========================================
-const apiKey = ""; // Inyectada por la plataforma
+const apiKey = ""; 
 
 const callGeminiAPI = async (prompt) => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
@@ -140,33 +142,23 @@ const RUTINA_TAMARA_OFICIAL = [
 ];
 
 const INITIAL_DATABASE = {
-  entrenador: { 
-    username: "coach", password: "1234", name: "Coach Jhon", color: "from-emerald-600 to-teal-500", subtitle: "Panel de Control", advice: "Calidad sobre cantidad.", logs: {}, notes: [],
-    templates: [{ id: "tmpl_tamara", name: "Plantilla Athlos: Tamara (Anti-Oficina)", days: RUTINA_TAMARA_OFICIAL }],
-    workoutData: { days: [] } 
-  },
-  tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira psoas cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
-  pivon: { username: "pivon", password: "1234", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero", advice: "Siente el glúteo.", logs: {}, notes: [], workoutData: { days: [] } }
+  entrenador: { username: "coach", password: "1234", name: "Coach Jhon", color: "from-emerald-600 to-teal-500", subtitle: "Panel de Control", advice: "Calidad sobre cantidad.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Athlos: Tamara (Anti-Oficina)", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
+  tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira psoas cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } }
 };
 
 const warmupData = {
   warmupLower: { title: "Calentamiento Tren Inferior", steps: [{ name: "Círculos cadera", detail: "15/lado" }, { name: "Parabrisas", detail: "15/lado" }] },
   warmupUpper: { title: "Calentamiento Tren Superior", steps: [{ name: "Cat-Cow", detail: "10 reps" }, { name: "Rotaciones", detail: "10/lado" }] },
-  warmupAthlos: { title: "Calentamiento Dinámico 'Athlos'", steps: [
-    { name: "90/90 Hip Flow", detail: "10 rotaciones sentado." },
-    { name: "Cat-Cow", detail: "10 reps lentas." },
-    { name: "Sentadillas", detail: "15 reps controladas." }
-  ]}
+  warmupAthlos: { title: "Calentamiento Dinámico 'Athlos'", steps: [{ name: "90/90 Hip Flow", detail: "10 rotaciones sentado." }, { name: "Cat-Cow", detail: "10 reps lentas." }, { name: "Sentadillas", detail: "15 reps controladas." }] }
 };
 
 // ==========================================
-// COMPONENTES AUXILIARES
+// COMPONENTES AUXILIARES BLINDADOS
 // ==========================================
 
 const PlateDisplay = ({ weight }) => {
   const target = parseFloat(weight) || 0;
   if (target < 20) return <p className="text-[10px] text-zinc-500 mt-2 font-bold text-center italic">Mancuerna o Máquina</p>;
-  
   const calculatePlates = (w) => {
     let side = (w - 20) / 2;
     if (side <= 0 || isNaN(side)) return [];
@@ -177,18 +169,14 @@ const PlateDisplay = ({ weight }) => {
     }
     return res;
   };
-
   const plates = calculatePlates(target);
   const colors = { 25: 'bg-red-500 text-white', 20: 'bg-blue-600 text-white', 15: 'bg-yellow-500 text-black', 10: 'bg-green-600 text-white', 5: 'bg-gray-100 text-black border', 2.5: 'bg-gray-800 text-white', 1.25: 'bg-zinc-400 text-black' };
-
-  if (plates.length === 0) return <p className="text-[10px] text-zinc-500 mt-2 font-bold text-center">Solo la barra olímpica (20kg)</p>;
-
+  if (plates.length === 0) return <p className="text-[10px] text-zinc-500 mt-2 font-bold text-center">Barra olímpica (20kg)</p>;
   return (
     <div className="mt-3 bg-zinc-50 rounded-xl p-3 border border-zinc-100 flex flex-col items-center">
       <p className="text-[9px] font-black uppercase text-zinc-400 mb-2">Discos por lado (Barra 20kg)</p>
       <div className="flex items-center justify-center gap-0.5">
-        <div className="w-12 h-1.5 bg-zinc-300 rounded-l-full" />
-        <div className="w-2 h-4 bg-zinc-400 rounded-sm" />
+        <div className="w-12 h-1.5 bg-zinc-300 rounded-l-full" /><div className="w-2 h-4 bg-zinc-400 rounded-sm" />
         {plates.map((p, i) => <div key={i} className={`flex items-center justify-center font-black text-[9px] w-5 ${p >= 15 ? 'h-12' : 'h-8'} rounded-sm shadow-sm ${colors[p]}`}>{p}</div>)}
       </div>
     </div>
@@ -196,7 +184,7 @@ const PlateDisplay = ({ weight }) => {
 };
 
 const MiniProgressChart = ({ data, color, isAdmin, mode, exSets }) => {
-  if (!data || data.length < 2) return <div className="h-16 flex items-center justify-center text-[10px] text-zinc-400 italic">Registra datos para ver gráfica</div>;
+  if (!data || data.length < 2) return null;
   const getVal = (d) => {
     const w = parseFloat(d.weight) || 0;
     return mode === 'volume' ? w * (parseInt(d.reps) || 10) * (parseInt(exSets) || 3) : w;
@@ -216,24 +204,21 @@ const MiniProgressChart = ({ data, color, isAdmin, mode, exSets }) => {
 
 const GlobalRestTimer = ({ initialSeconds, onCancel }) => {
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
-
   useEffect(() => {
     if (timeLeft <= 0) return;
     const interval = setInterval(() => setTimeLeft(t => t - 1), 1000);
     return () => clearInterval(interval);
   }, [timeLeft]);
-
   const formatTime = (time) => {
     const mins = Math.floor(time / 60);
     const secs = time % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
-
   return (
     <div className="sticky top-2 z-50 flex justify-center pointer-events-none mb-4">
       <div className={`pointer-events-auto shadow-2xl flex items-center gap-3 px-6 py-3 rounded-full font-black text-sm transition-all transform scale-110 border-2 border-white ${timeLeft > 0 ? 'bg-orange-500 text-white animate-pulse' : 'bg-green-500 text-white'}`}>
         <Clock size={18} /> 
-        <span>{timeLeft > 0 ? `DESCANSO: ${formatTime(timeLeft)}` : "¡DALE OTRA SERIE! 🔥"}</span>
+        <span>{timeLeft > 0 ? `DESCANSO: ${formatTime(timeLeft)}` : "¡VAMOS A POR OTRA! 🔥"}</span>
         <button onClick={onCancel} className="ml-2 bg-black/10 hover:bg-black/20 rounded-full p-1"><X size={14} /></button>
       </div>
     </div>
@@ -265,12 +250,10 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
   const safeS = String(ex?.s || "-");
   const safeR = String(ex?.r || "-");
   const safeTip = String(ex?.tip || "Concéntrate en la técnica.");
-  const safeYt = ex?.yt ? String(ex.yt) : null;
-  const safeImg = ex?.img ? String(ex.img) : "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400";
 
   const logs = workoutLogs[safeName] || [];
   const latestW = logs.length > 0 ? parseFloat(logs[0].weight) : 0;
-  const maxWeight = logs.length > 0 ? Math.max(...logs.map(l => parseFloat(l.weight) || 0)) : 0;
+  const maxW = logs.length > 0 ? Math.max(...logs.map(l => parseFloat(l.weight) || 0)) : 0;
 
   const handleAddLog = () => {
     if (!localWeight) return;
@@ -280,99 +263,49 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
     setLocalWeight(""); setLocalReps(""); setShowCalc(false);
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 400; 
-        let scaleSize = MAX_WIDTH / img.width;
-        if (img.width <= MAX_WIDTH) scaleSize = 1;
-        canvas.width = img.width * scaleSize;
-        canvas.height = img.height * scaleSize;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
-        if (onUpdateImage) onUpdateImage(dayId, safeName, dataUrl);
-      };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const colorStr = String(accentColor || "from-blue-600 to-indigo-500");
-  const bgAccent = isAdmin ? "bg-amber-500" : colorStr.includes("blue") ? "bg-blue-500" : colorStr.includes("emerald") ? "bg-emerald-500" : "bg-pink-500";
-  const textAccent = isAdmin ? "text-amber-500" : colorStr.includes("blue") ? "text-blue-600" : colorStr.includes("emerald") ? "text-emerald-600" : "text-pink-600";
-  
-  const targetRepsCalc = getTargetReps(safeR);
-  let suggestedWeight = 0;
-  if (logs.length > 0) {
-    const max1RM = logs.reduce((max, log) => {
-      const rm = calculate1RM(log.weight, log.reps || 10);
-      return rm > max ? rm : max;
-    }, 0);
-    suggestedWeight = Math.round((max1RM / (1 + targetRepsCalc / 30)) * 2) / 2;
-  }
-
-  const weightToCalc = parseFloat(localWeight) || suggestedWeight || 0;
-
   return (
     <div className={`${isAdmin ? "bg-zinc-900 border-zinc-800" : "bg-white border-gray-100"} rounded-[2.5rem] border shadow-sm overflow-hidden mb-6`}>
       <div className="relative h-52 bg-zinc-800 group">
-        <img src={safeImg} alt={safeName} className="w-full h-full object-cover" loading="lazy" onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'; }} />
+        <img src={ex.img} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'; }} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
         {isAdmin && (
-           <button onClick={() => fileInput.current.click()} className="absolute top-4 left-4 bg-black/60 backdrop-blur-md p-2 rounded-xl text-white z-10"><Camera size={18} /><input type="file" ref={fileInput} className="hidden" onChange={handleImageChange}/></button>
+           <button onClick={() => fileInput.current.click()} className="absolute top-4 left-4 bg-black/60 p-2 rounded-xl text-white z-10"><Camera size={18} /><input type="file" ref={fileInput} className="hidden" onChange={e => {
+             const file = e.target.files[0];
+             const reader = new FileReader();
+             reader.onload = (ev) => onUpdateImage(dayId, safeName, ev.target.result);
+             if(file) reader.readAsDataURL(file);
+           }}/></button>
         )}
         <div className="absolute bottom-4 left-6 text-white">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isAdmin ? "bg-amber-500 text-black" : "bg-indigo-500 text-white"} inline-block`}>{safeMus}</span>
-            {maxWeight > 0 && <div className="flex items-center gap-1 bg-white/10 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black"><Crown size={10} className="text-amber-400" /> {maxWeight}kg</div>}
-          </div>
-          <h4 className="text-2xl font-black pr-14 leading-tight">{safeName}</h4>
+          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isAdmin ? "bg-amber-500 text-black" : "bg-indigo-500 text-white"} mb-1 inline-block`}>{safeMus}</span>
+          <h4 className="text-xl font-black">{safeName}</h4>
         </div>
-        {safeYt && <a href={safeYt} target="_blank" rel="noreferrer" className={`absolute top-4 right-4 ${isAdmin ? "bg-amber-500 text-black" : "bg-white/20 text-white"} backdrop-blur-md p-3 rounded-2xl hover:scale-110 transition-transform shadow-lg`}><Youtube size={22} /></a>}
+        {ex.yt && <a href={ex.yt} target="_blank" rel="noreferrer" className="absolute top-4 right-4 bg-white/20 p-3 rounded-2xl text-white"><Youtube size={22} /></a>}
       </div>
       <div className="p-6">
         <div className="grid grid-cols-2 gap-3 mb-6 text-center">
-          <div className={`${isAdmin ? "bg-zinc-800" : "bg-gray-50"} p-3 rounded-2xl`}><p className={`text-[9px] font-bold uppercase ${isAdmin ? "text-zinc-500" : "text-gray-400"}`}>Series</p><p className={`text-xl font-black ${isAdmin ? "text-amber-500" : "text-gray-900"}`}>{safeS}</p></div>
-          <div className={`${isAdmin ? "bg-zinc-800" : "bg-gray-50"} p-3 rounded-2xl`}><p className={`text-[9px] font-bold uppercase ${isAdmin ? "text-zinc-500" : "text-gray-400"}`}>Reps</p><p className={`text-xl font-black ${isAdmin ? "text-amber-500" : "text-gray-900"}`}>{safeR}</p></div>
+          <div className="bg-zinc-100/50 dark:bg-zinc-800 p-3 rounded-2xl"><p className="text-[9px] font-bold text-zinc-400 uppercase">Series</p><p className={`text-xl font-black ${isAdmin ? "text-amber-500" : "text-gray-900"}`}>{safeS}</p></div>
+          <div className="bg-zinc-100/50 dark:bg-zinc-800 p-3 rounded-2xl"><p className="text-[9px] font-bold text-zinc-400 uppercase">Reps</p><p className={`text-xl font-black ${isAdmin ? "text-amber-500" : "text-gray-900"}`}>{safeR}</p></div>
         </div>
-        <div className="mb-6 space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <h5 className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${isAdmin ? "text-zinc-500" : "text-gray-400"}`}><History size={14} /> Historial</h5>
-            <div className="flex gap-2">
-               <button onClick={() => onStartTimer(45)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-orange-50 text-orange-600 border-orange-100"}`}>45s</button>
-               <button onClick={() => onStartTimer(60)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500 text-black border-amber-600" : "bg-orange-100 text-orange-700 border-orange-200"}`}>60s</button>
-            </div>
-          </div>
-          {suggestedWeight > 0 && (
-            <div className={`flex items-center gap-2 mb-3 text-[10px] font-bold p-2 rounded-xl border ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-indigo-50 text-indigo-600 border-indigo-100"}`}>
-              <Brain size={14} className="shrink-0" />
-              <span>Sugerencia: <strong>{suggestedWeight}kg</strong> (RM x {targetRepsCalc})</span>
-            </div>
-          )}
+        <div className="space-y-4">
           <div className="flex flex-col gap-2">
             {logs.slice(0, 3).map(l => (
-              <div key={l.id} className={`flex justify-between items-center p-2 rounded-xl border animate-in zoom-in ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : "bg-zinc-50 border-zinc-100"}`}>
+              <div key={l.id} className="flex justify-between items-center bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
                 <span className={`text-xs font-bold ${isAdmin ? "text-amber-500" : "text-indigo-600"}`}>{String(l.weight)}kg x {String(l.reps)}</span>
-                <div className="flex items-center gap-3"><span className={`text-[9px] ${isAdmin ? "text-zinc-500" : "text-zinc-400"}`}>{String(l.date)}</span><button onClick={() => onDeleteLog(safeName, l.id)} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
+                <div className="flex items-center gap-3"><span className="text-[9px] text-zinc-400">{String(l.date)}</span><button onClick={() => onDeleteLog(safeName, l.id)} className="text-red-400"><Trash2 size={12}/></button></div>
               </div>
             ))}
           </div>
-          <div className="flex gap-2 mt-4">
-            <input type="number" placeholder="Peso..." className={`flex-1 min-w-0 border rounded-xl p-3 text-sm font-bold outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white" : "bg-zinc-50 border-gray-200 text-gray-900"}`} onKeyDown={(e) => e.key === "Enter" && handleAddLog()} onChange={e => setLocalWeight(e.target.value)} value={localWeight} />
-            <input type="number" placeholder="Reps" className={`w-16 shrink-0 border rounded-xl p-3 text-sm font-bold text-center outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white" : "bg-zinc-50 border-gray-200 text-gray-900"}`} onKeyDown={(e) => e.key === "Enter" && handleAddLog()} onChange={e => setLocalReps(e.target.value)} value={localReps} />
-            <button onClick={() => setShowCalc(!showCalc)} className={`px-3 shrink-0 rounded-xl transition-all shadow-md border ${isAdmin ? (showCalc ? "bg-amber-500 text-black border-amber-500" : "bg-zinc-800 text-zinc-400 border-zinc-700") : (showCalc ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-400 border-gray-200")}`}><Calculator size={20}/></button>
-            <button onClick={handleAddLog} className={`px-4 shrink-0 rounded-xl transition-all active:scale-95 shadow-md ${isAdmin ? "bg-amber-500 text-black" : "bg-gray-900 text-white"}`}><PlusCircle size={20}/></button>
+          <div className="flex gap-2">
+            <input type="number" placeholder="Peso" className="w-full bg-zinc-50 dark:bg-zinc-800 border rounded-xl p-3 text-sm font-bold outline-none" value={localWeight} onChange={e => setLocalWeight(e.target.value)} />
+            <input type="number" placeholder="R" className="w-16 bg-zinc-50 dark:bg-zinc-800 border rounded-xl p-3 text-sm font-bold text-center outline-none" value={localReps} onChange={e => setLocalReps(e.target.value)} />
+            <button onClick={() => setShowCalc(!showCalc)} className={`p-3 rounded-xl border ${showCalc ? 'bg-amber-500 text-black border-amber-600' : 'bg-zinc-100 text-zinc-400 border-zinc-200'}`}><Calculator size={18}/></button>
+            <button onClick={handleAddLog} className={`p-3 rounded-xl shadow-md ${isAdmin ? "bg-amber-500 text-black" : "bg-black text-white"}`}><PlusCircle size={20}/></button>
           </div>
-          {showCalc && <PlateDisplay weight={weightToCalc} />}
-        </div>
-        <div className={`p-3 rounded-xl border flex gap-2 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : "bg-indigo-50 border-indigo-100"}`}>
-          <Info size={14} className={`${textAccent} shrink-0 mt-0.5`} /><p className={`text-[11px] italic leading-tight ${isAdmin ? "text-zinc-400" : "text-zinc-600"}`}>"{safeTip}"</p>
+          {showCalc && <PlateDisplay weight={localWeight || latestW || 0} />}
+          <div className={`${isAdmin ? "bg-amber-500/10 border-amber-500/20" : "bg-indigo-50 border-indigo-100"} p-3 rounded-xl border flex gap-2`}>
+            <Info size={14} className={`${isAdmin ? "text-amber-500" : "text-indigo-500"} shrink-0 mt-0.5`} /><p className="text-[11px] italic text-zinc-600 dark:text-zinc-400 leading-tight">"{safeTip}"</p>
+          </div>
         </div>
       </div>
     </div>
@@ -383,7 +316,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
 // COMPONENTE PRINCIPAL
 // ==========================================
 export default function App() {
-  const [db, setDb] = useState(() => safeJSONParse("athlos_coach_db_v33", INITIAL_DATABASE));
+  const [db, setDb] = useState(() => safeJSONParse("athlos_coach_db_v36", INITIAL_DATABASE));
   const [dataLoaded, setDataLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -427,6 +360,159 @@ export default function App() {
   const [noteText, setNoteText] = useState("");
   const [timerDuration, setTimerDuration] = useState(null);
   const [timerKey, setTimerKey] = useState(0);
+
+  const lastBackPress = useRef(0);
+  const [showExitToast, setShowExitToast] = useState(false);
+
+  // RENOMBRAMIENTO MAESTRO DE FUNCIONES PARA VACIAR CACHÉ
+  const authenticateUser = async () => {
+    setLoginError("");
+    const input = loginUser.toLowerCase().trim();
+    if (!input) return;
+    try {
+      if (input === "coach" && loginPass === "1234") {
+        const id = "entrenador";
+        setLoggedInUser(id); setCurrentClientId(id); setIsAdminMode(true);
+        if (keepLoggedIn) localStorage.setItem("athlos_user_session_v36", JSON.stringify(id));
+        else sessionStorage.setItem("athlos_user_session_v36", JSON.stringify(id));
+        return;
+      }
+
+      let foundUser = db[input] || INITIAL_DATABASE[input];
+      if (navigator.onLine && !foundUser) {
+         const docSnap = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
+         if (docSnap.exists()) foundUser = docSnap.data();
+      }
+
+      if (foundUser && foundUser.password === loginPass) {
+        setLoggedInUser(input);
+        setCurrentClientId(input);
+        setIsAdminMode(input === 'entrenador' || input === 'coach');
+        if (keepLoggedIn) localStorage.setItem("athlos_user_session_v36", JSON.stringify(input));
+        else sessionStorage.setItem("athlos_user_session_v36", JSON.stringify(input));
+      } else { setLoginError("Usuario o contraseña incorrectos"); }
+    } catch (e) { setLoginError("Error de red."); }
+  };
+
+  const signOutUser = () => {
+    setLoggedInUser(null); setIsAdminMode(false); 
+    localStorage.removeItem("athlos_user_session_v36"); 
+    sessionStorage.removeItem("athlos_user_session_v36");
+    setDataLoaded(false);
+  };
+
+  const modifyDayData = (id, field, val) => {
+    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: (u.workoutData.days || []).map(d => d.id === id ? {...d, [field]: val} : d) } }));
+  };
+
+  const modifyExerciseData = (dayId, idx, field, val) => {
+    updateUserInCloud(currentClientId, (u) => {
+      const days = [...(u.workoutData.days || [])];
+      const dIdx = days.findIndex(d => d.id === dayId);
+      if(dIdx > -1) days[dIdx].exercises[idx] = { ...days[dIdx].exercises[idx], [field]: val };
+      return { ...u, workoutData: { ...u.workoutData, days } };
+    });
+  };
+
+  const removeExerciseFromDay = (dayId, exIdx) => {
+    updateUserInCloud(currentClientId, (u) => {
+      const days = [...(u.workoutData.days || [])];
+      const dIdx = days.findIndex(d => d.id === dayId);
+      if (dIdx > -1) days[dIdx].exercises.splice(exIdx, 1);
+      return { ...u, workoutData: { ...u.workoutData, days } };
+    });
+    setToast({ type: "SUCCESS", message: "Ejercicio borrado" });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const applyTemplateRoutine = (source) => {
+    if (!source) return;
+    let days = [];
+    if (source.startsWith("tmpl_")) {
+      const tId = source.replace("tmpl_", "");
+      days = (db.entrenador?.templates || []).find(t => t.id === tId)?.days || [];
+    } else {
+      const cId = source.replace("client_", "");
+      days = db[cId]?.workoutData?.days || [];
+    }
+    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: JSON.parse(JSON.stringify(days)) } }));
+    setToast({ type: "SUCCESS", message: "Rutina aplicada" });
+    setTimeout(() => setToast(null), 2500);
+    setShowEditor(false);
+  };
+
+  const saveRoutineTemplate = () => {
+    if (!templateNameInput.trim()) return;
+    const newTmpl = { id: Date.now().toString(), name: templateNameInput, days: JSON.parse(JSON.stringify(db[currentClientId].workoutData.days)) };
+    updateUserInCloud('entrenador', (coach) => ({ ...coach, templates: [...(coach.templates || []), newTmpl] }));
+    setToast({ type: "SUCCESS", message: "Plantilla guardada" });
+    setTimeout(() => { setToast(null); setIsSavingTemplate(false); setTemplateNameInput(""); }, 2500);
+  };
+
+  const removeRoutineTemplate = (tmplId) => {
+    updateUserInCloud('entrenador', (coachData) => ({ ...coachData, templates: (coachData.templates || []).filter(t => t.id !== tmplId) }));
+    setToast({ type: "SUCCESS", message: "Plantilla borrada" });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const createNewDay = () => {
+    if (!newDay.title) return;
+    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: [...(u.workoutData.days || []), { id: Date.now(), ...newDay, exercises: [] }] } }));
+    setNewDay({ title: "", focus: "", warmupType: "warmupLower" });
+  };
+
+  const removeDayFromRoutine = (dayId) => {
+    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: (u.workoutData.days || []).filter(d => d.id !== dayId) } }));
+    setToast({ type: "SUCCESS", message: "Día borrado" });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const appendNewExercise = () => {
+    if (!newEx.name || !targetDayId) return;
+    updateUserInCloud(currentClientId, (u) => {
+       const days = (u.workoutData.days || []).map(d => d.id.toString() === targetDayId.toString() ? { ...d, exercises: [...(d.exercises || []), newEx] } : d);
+       return { ...u, workoutData: { ...u.workoutData, days } };
+    });
+    setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
+  };
+
+  const removeClientAccount = async () => {
+    if (currentClientId === 'entrenador' || currentClientId === 'coach') return;
+    setIsSyncing(true);
+    await deleteDoc(doc(db_cloud, COLLECTION_NAME, currentClientId)).catch(()=>{});
+    setDb(prev => { const n = {...prev}; delete n[currentClientId]; return n; });
+    setCurrentClientId('entrenador');
+    setIsSyncing(false);
+    setToast({ type: "SUCCESS", message: "Cliente eliminado" });
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const createClientProfile = () => {
+    if (!newClient.name || !newClient.username || !newClient.password) {
+      setToast({ type: "ERROR", message: "Faltan datos por rellenar" });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    const id = newClient.username.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+    
+    let sourceDays = [];
+    if (newClient.sourceTemplate.startsWith("tmpl_")) {
+      const tmplId = newClient.sourceTemplate.replace("tmpl_", "");
+      sourceDays = (db.entrenador?.templates || []).find(t => t.id === tmplId)?.days || [];
+    } else if (newClient.sourceTemplate.startsWith("client_")) {
+      const cId = newClient.sourceTemplate.replace("client_", "");
+      sourceDays = db[cId]?.workoutData?.days || [];
+    }
+
+    const newUserObj = {
+      username: newClient.username.toLowerCase(), password: newClient.password, name: newClient.name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], 
+      workoutData: { days: JSON.parse(JSON.stringify(sourceDays)) }
+    };
+    updateUserInCloud(id, () => newUserObj);
+    setCurrentClientId(id);
+    setShowAddClientModal(false);
+    setNewClient({ name: "", username: "", password: "", sourceTemplate: "" });
+  };
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -492,132 +578,6 @@ export default function App() {
     }
   }, [loggedInUser, db]);
 
-  const handleLogin = async () => {
-    setLoginError("");
-    const input = loginUser.toLowerCase().trim();
-    if (!input) return;
-    
-    try {
-      // PUERTA TRASERA INFALIBLE PARA EL COACH
-      if (input === "coach" && loginPass === "1234") {
-        const idToUse = "entrenador"; // Forzamos el ID correcto
-        setLoggedInUser(idToUse);
-        setCurrentClientId(idToUse);
-        setIsAdminMode(true);
-        if (keepLoggedIn) localStorage.setItem("athlos_user_session_v33", JSON.stringify(idToUse));
-        else sessionStorage.setItem("athlos_user_session_v33", JSON.stringify(idToUse));
-        return;
-      }
-
-      let foundUser = db[input] || INITIAL_DATABASE[input];
-      
-      if (navigator.onLine && !foundUser) {
-         const docSnap = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
-         if (docSnap.exists()) foundUser = docSnap.data();
-      }
-
-      if (foundUser && foundUser.password === loginPass) {
-        setLoggedInUser(input);
-        setCurrentClientId(input);
-        setIsAdminMode(input === 'entrenador' || input === 'coach');
-        
-        if (keepLoggedIn) {
-          localStorage.setItem("athlos_user_session_v33", JSON.stringify(input));
-        } else {
-          sessionStorage.setItem("athlos_user_session_v33", JSON.stringify(input));
-        }
-      } else { 
-        setLoginError("Usuario o contraseña incorrectos"); 
-      }
-    } catch (e) { 
-      setLoginError("Error de red. Intenta más tarde."); 
-    }
-  };
-
-  const handleLogout = () => {
-    setLoggedInUser(null); 
-    setIsAdminMode(false); 
-    localStorage.removeItem("athlos_user_session_v33"); 
-    sessionStorage.removeItem("athlos_user_session_v33");
-    setLoginUser("");
-    setLoginPass("");
-    setDataLoaded(false);
-  };
-
-  const handleUpdateDay = (id, field, val) => {
-    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: u.workoutData.days.map(d => d.id === id ? {...d, [field]: val} : d) } }));
-  };
-
-  const handleUpdateExercise = (dayId, idx, field, val) => {
-    updateUserInCloud(currentClientId, (u) => {
-      const days = [...u.workoutData.days];
-      const dIdx = days.findIndex(d => d.id === dayId);
-      if(dIdx > -1) days[dIdx].exercises[idx] = { ...days[dIdx].exercises[idx], [field]: val };
-      return { ...u, workoutData: { ...u.workoutData, days } };
-    });
-  };
-
-  const handleDeleteExercise = (dayId, exIdx) => {
-    updateUserInCloud(currentClientId, (u) => {
-      const days = [...u.workoutData.days];
-      const dIdx = days.findIndex(d => d.id === dayId);
-      if (dIdx > -1) days[dIdx].exercises.splice(exIdx, 1);
-      return { ...u, workoutData: { ...u.workoutData, days } };
-    });
-    setToast({ type: "SUCCESS", message: "Ejercicio borrado" });
-    setTimeout(() => setToast(null), 2500);
-  };
-
-  const handleCopyRoutine = (source) => {
-    if (!source) return;
-    let days = [];
-    if (source.startsWith("tmpl_")) {
-      const tId = source.replace("tmpl_", "");
-      days = (db.entrenador?.templates || []).find(t => t.id === tId)?.days || [];
-    } else {
-      const cId = source.replace("client_", "");
-      days = db[cId]?.workoutData?.days || [];
-    }
-    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: JSON.parse(JSON.stringify(days)) } }));
-    setToast({ type: "SUCCESS", message: "Rutina aplicada" });
-    setTimeout(() => setToast(null), 2500);
-    setShowEditor(false);
-  };
-
-  const handleSaveAsTemplate = () => {
-    if (!templateNameInput.trim()) return;
-    const newTmpl = { id: Date.now().toString(), name: templateNameInput, days: JSON.parse(JSON.stringify(db[currentClientId].workoutData.days)) };
-    updateUserInCloud('entrenador', (coach) => ({ ...coach, templates: [...(coach.templates || []), newTmpl] }));
-    setToast({ type: "SUCCESS", message: "Plantilla guardada" });
-    setTimeout(() => { setToast(null); setIsSavingTemplate(false); setTemplateNameInput(""); }, 2500);
-  };
-
-  const handleDeleteTemplate = (tmplId) => {
-    updateUserInCloud('entrenador', (coachData) => ({ ...coachData, templates: (coachData.templates || []).filter(t => t.id !== tmplId) }));
-    setToast({ type: "SUCCESS", message: "Plantilla borrada" });
-    setTimeout(() => setToast(null), 2500);
-  };
-
-  const handleAddDay = () => {
-    if (!newDay.title) return;
-    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: [...u.workoutData.days, { id: Date.now(), ...newDay, exercises: [] }] } }));
-    setNewDay({ title: "", focus: "", warmupType: "warmupLower" });
-  };
-
-  const handleDeleteDay = (dayId) => {
-    updateUserInCloud(currentClientId, (u) => ({ ...u, workoutData: { ...u.workoutData, days: u.workoutData.days.filter(d => d.id !== dayId) } }));
-    setToast({ type: "SUCCESS", message: "Día borrado" });
-    setTimeout(() => setToast(null), 2500);
-  };
-
-  const addExercise = () => {
-    if (!newEx.name || !targetDayId) return;
-    updateUserInCloud(currentClientId, (u) => {
-       const days = u.workoutData.days.map(d => d.id.toString() === targetDayId.toString() ? { ...d, exercises: [...d.exercises, newEx] } : d);
-       return { ...u, workoutData: { ...u.workoutData, days } };
-    });
-    setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
-  };
 
   const handleAddLog = useCallback((exName, weight, reps) => {
     const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
@@ -638,28 +598,26 @@ export default function App() {
     setNoteText("");
   };
 
-  const handleDeleteClient = async () => {
-    if (currentClientId === 'entrenador' || currentClientId === 'coach') return;
-    setIsSyncing(true);
-    await deleteDoc(doc(db_cloud, COLLECTION_NAME, currentClientId)).catch(()=>{});
-    setDb(prev => { const n = {...prev}; delete n[currentClientId]; return n; });
-    setCurrentClientId('entrenador');
-    setIsSyncing(false);
-    setToast({ type: "SUCCESS", message: "Cliente eliminado" });
-    setTimeout(() => setToast(null), 2500);
+  const handleAiCoachReply = async (noteId, text) => {
+    setLoadingAiNoteId(noteId);
+    const clientName = db[currentClientId]?.name || "Cliente";
+    const reply = await callGeminiAPI(`El cliente ${clientName} dice: "${text}". Responde como su entrenador con un mensaje motivador de 2 líneas con algún emoji.`);
+    if (reply) {
+      updateUserInCloud(currentClientId, (userData) => ({
+        ...userData, notes: (userData.notes || []).map(n => n.id === noteId ? { ...n, aiReply: reply.trim() } : n)
+      }));
+    }
+    setLoadingAiNoteId(null);
   };
 
-  const finishSession = () => {
-    setToast({ type: "SUCCESS", message: `¡SESIÓN TERMINADA! 🎉` });
-    setSessionStart(null); setTimeout(() => setToast(null), 3000); navigateTo("home");
+  const handleChangePassword = () => {
+    if (db[currentClientId].password !== pwdCurrent) { setPwdError("Actual incorrecta"); return; }
+    if (pwdNew.length < 4) { setPwdError("Mínimo 4 caracteres"); return; }
+    if (pwdNew !== pwdConfirm) { setPwdError("Las contraseñas no coinciden"); return; }
+    updateUserInCloud(currentClientId, (userData) => ({ ...userData, password: pwdNew }));
+    setPwdSuccess("¡Éxito!");
+    setTimeout(() => { setShowPasswordModal(false); setPwdCurrent(""); setPwdNew(""); setPwdConfirm(""); setPwdSuccess(""); }, 2000);
   };
-
-  const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); window.scrollTo(0,0); };
-
-  const handleStartTimer = useCallback((s) => {
-    setTimerDuration(s);
-    setTimerKey((k) => k + 1);
-  }, []);
 
   const handleUpdateImage = useCallback((dayId, exName, newImgBase64) => {
     updateUserInCloud(currentClientId, (userData) => {
@@ -672,45 +630,17 @@ export default function App() {
     });
   }, [currentClientId, updateUserInCloud]);
 
-  const handleChangePassword = () => {
-    if (db[currentClientId].password !== pwdCurrent) { setPwdError("Actual incorrecta"); return; }
-    if (pwdNew.length < 4) { setPwdError("Mínimo 4 caracteres"); return; }
-    if (pwdNew !== pwdConfirm) { setPwdError("Las contraseñas no coinciden"); return; }
-    updateUserInCloud(currentClientId, (userData) => ({ ...userData, password: pwdNew }));
-    setPwdSuccess("¡Éxito!");
-    setTimeout(() => { setShowPasswordModal(false); setPwdCurrent(""); setPwdNew(""); setPwdConfirm(""); setPwdSuccess(""); }, 2000);
+  const handleStartTimer = useCallback((s) => {
+    setTimerDuration(s);
+    setTimerKey((k) => k + 1);
+  }, []);
+
+  const finishSession = () => {
+    setToast({ type: "SUCCESS", message: `¡SESIÓN TERMINADA! 🎉` });
+    setSessionStart(null); setTimeout(() => setToast(null), 3000); navigateTo("home");
   };
 
-  const getSourceDays = (sourceVal) => {
-    let sourceDays = [];
-    if (sourceVal.startsWith("tmpl_")) {
-      const tmplId = sourceVal.replace("tmpl_", "");
-      const tmpl = (db.entrenador?.templates || []).find(t => t.id === tmplId);
-      if(tmpl) sourceDays = tmpl.days;
-    } else if (sourceVal.startsWith("client_")) {
-      const cId = sourceVal.replace("client_", "");
-      if(db[cId]) sourceDays = db[cId].workoutData.days;
-    }
-    return sourceDays;
-  };
-
-  const handleAddClient = () => {
-    if (!newClient.name || !newClient.username || !newClient.password) {
-      setToast({ type: "ERROR", message: "Faltan datos por rellenar" });
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-    const id = newClient.username.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
-    const initialDays = getSourceDays(newClient.sourceTemplate);
-    const newUserObj = {
-      username: newClient.username.toLowerCase(), password: newClient.password, name: newClient.name, color: newClient.color, subtitle: newClient.subtitle || "Nuevo Plan", advice: newClient.advice || "A darlo todo.", logs: {}, notes: [], 
-      workoutData: { days: JSON.parse(JSON.stringify(initialDays)) }
-    };
-    updateUserInCloud(id, () => newUserObj);
-    setCurrentClientId(id);
-    setShowAddClientModal(false);
-    setNewClient({ name: "", username: "", password: "", color: "from-blue-600 to-indigo-500", subtitle: "", advice: "", sourceTemplate: "" });
-  };
+  const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); window.scrollTo(0,0); };
 
   useEffect(() => {
     window.history.replaceState({ tab: "home" }, "");
@@ -754,38 +684,18 @@ export default function App() {
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-2">Usuario</label>
-              <input 
-                type="text" 
-                placeholder="Introduce tu usuario..." 
-                className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600 placeholder:font-normal" 
-                value={loginUser} 
-                onChange={(e) => setLoginUser(e.target.value)} 
-              />
+              <input type="text" placeholder="Escribe tu usuario..." className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600 placeholder:font-normal" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-2">Contraseña</label>
-              <input 
-                type="password" 
-                placeholder="Introduce tu contraseña..." 
-                className={`w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600 placeholder:font-normal ${loginPass ? 'text-amber-500 tracking-[0.5em]' : 'text-white tracking-normal'}`}
-                value={loginPass} 
-                onChange={(e) => setLoginPass(e.target.value)} 
-                onKeyDown={(e) => e.key === 'Enter' && handleLogin()} 
-              />
+              <input type="password" placeholder="••••" className={`w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold focus:outline-none focus:border-amber-500 transition-colors ${loginPass ? 'text-amber-500 tracking-[0.5em]' : 'text-white tracking-normal'}`} value={loginPass} onChange={(e) => setLoginPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && performLogin()} />
             </div>
-            
             <label className="flex items-center gap-2 text-zinc-400 text-xs font-bold pl-2 cursor-pointer mt-2">
-              <input 
-                type="checkbox" 
-                checked={keepLoggedIn} 
-                onChange={(e) => setKeepLoggedIn(e.target.checked)} 
-                className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-amber-500 focus:ring-amber-500 accent-amber-500" 
-              />
+              <input type="checkbox" checked={keepLoggedIn} onChange={(e) => setKeepLoggedIn(e.target.checked)} className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-amber-500 focus:ring-amber-500 accent-amber-500" />
               Mantener sesión iniciada
             </label>
-
-            {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{loginError}</p>}
-            <button onClick={handleLogin} className="w-full bg-amber-500 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg active:scale-95 transition-all mt-4">Acceder</button>
+            {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
+            <button onClick={authenticateUser} className="w-full bg-amber-500 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg active:scale-95 transition-all mt-4">Acceder</button>
           </div>
         </div>
       </div>
@@ -795,7 +705,7 @@ export default function App() {
   // Previene el bucle si no encuentra el cliente o está cargando en la nube.
   if (!dataLoaded || !db[currentClientId]) {
      if (dataLoaded && !db[currentClientId]) {
-       handleLogout();
+       signOutUser();
      }
      return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-amber-500"><Loader2 className="animate-spin" size={40} /></div>;
   }
@@ -815,7 +725,7 @@ export default function App() {
            <div className="flex gap-2">
               {loggedInUser === 'entrenador' && !isAdminMode && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-600 p-2 rounded-xl border border-amber-500/20"><Settings size={18}/></button>}
               <button onClick={() => setShowPasswordModal(true)} className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl"><Key size={18}/></button>
-              <button onClick={handleLogout} className="bg-red-50 text-red-500 p-2 rounded-xl border border-red-100"><LogOut size={18}/></button>
+              <button onClick={signOutUser} className="bg-red-50 text-red-500 p-2 rounded-xl border border-red-100"><LogOut size={18}/></button>
            </div>
         </div>
 
@@ -851,7 +761,7 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                    <button onClick={() => setShowEditor(!showEditor)} className={`${showEditor ? "bg-amber-500 text-black border-amber-600" : "bg-zinc-800 text-white border-zinc-700"} py-4 rounded-xl text-[10px] font-black uppercase border transition-all flex items-center justify-center gap-2`}><Edit3 size={14}/> {showEditor ? 'Cerrar Edición' : 'Editar Rutina'}</button>
-                   <button onClick={handleDeleteClient} className="bg-red-500/10 text-red-500 py-4 rounded-xl text-[10px] font-black uppercase border border-red-500/20 flex justify-center items-center gap-2"><Trash2 size={14}/> Eliminar</button>
+                   <button onClick={removeClientAccount} className="bg-red-500/10 text-red-500 py-4 rounded-xl text-[10px] font-black uppercase border border-red-500/20 flex justify-center items-center gap-2"><Trash2 size={14}/> Eliminar</button>
                 </div>
 
                 {showEditor && (
@@ -866,10 +776,10 @@ export default function App() {
                        <div className="space-y-4">
                          {(client.workoutData.days || []).map(d => (
                             <div key={d.id} className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700 space-y-2">
-                               <div className="flex justify-between items-center"><span className="text-[9px] text-zinc-500 font-bold uppercase">Editar Día</span><button onClick={() => handleDeleteDay(d.id)} className="text-red-500"><Trash2 size={14}/></button></div>
-                               <input defaultValue={String(d.title || "")} onBlur={e => handleUpdateDay(d.id, 'title', e.target.value)} className="w-full bg-zinc-900 rounded-lg p-2 text-xs font-bold text-white outline-none focus:border-amber-500" />
-                               <input defaultValue={String(d.focus || "")} onBlur={e => handleUpdateDay(d.id, 'focus', e.target.value)} className="w-full bg-zinc-900 rounded-lg p-2 text-xs text-white outline-none focus:border-amber-500" />
-                               <select defaultValue={String(d.warmupType || "warmupLower")} onChange={e => handleUpdateDay(d.id, 'warmupType', e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-xs font-bold text-amber-500 outline-none focus:border-amber-500">
+                               <div className="flex justify-between items-center"><span className="text-[9px] text-zinc-500 font-bold uppercase">Editar Día</span><button onClick={() => removeDayFromRoutine(d.id)} className="text-red-500"><Trash2 size={14}/></button></div>
+                               <input defaultValue={String(d.title || "")} onBlur={e => modifyDayData(d.id, 'title', e.target.value)} className="w-full bg-zinc-900 rounded-lg p-2 text-xs font-bold text-white outline-none focus:border-amber-500" />
+                               <input defaultValue={String(d.focus || "")} onBlur={e => modifyDayData(d.id, 'focus', e.target.value)} className="w-full bg-zinc-900 rounded-lg p-2 text-xs text-white outline-none focus:border-amber-500" />
+                               <select defaultValue={String(d.warmupType || "warmupLower")} onChange={e => modifyDayData(d.id, 'warmupType', e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-xs font-bold text-amber-500 outline-none focus:border-amber-500">
                                  <option value="warmupLower">Calentamiento Tren Inferior</option>
                                  <option value="warmupUpper">Calentamiento Tren Superior</option>
                                  <option value="warmupAthlos">Calentamiento Dinámico 'Athlos'</option>
@@ -877,7 +787,7 @@ export default function App() {
                             </div>
                          ))}
                          <input type="text" placeholder="Nuevo Día..." className="w-full bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-xs text-white outline-none" value={newDay.title} onChange={e => setNewDay({...newDay, title: e.target.value})} />
-                         <button onClick={handleAddDay} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px]">CREAR DÍA NUEVO</button>
+                         <button onClick={createNewDay} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px]">CREAR DÍA NUEVO</button>
                        </div>
                      )}
 
@@ -889,16 +799,16 @@ export default function App() {
                          </select>
                          {targetDayId && (client.workoutData.days || []).find(d => d.id.toString() === targetDayId)?.exercises.map((ex, idx) => (
                            <div key={idx} className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700 space-y-2">
-                              <div className="flex justify-between items-center"><span className="text-[9px] text-zinc-500 font-bold">Ejercicio {idx + 1}</span><button onClick={() => handleDeleteExercise(parseInt(targetDayId), idx)} className="text-red-500"><Trash2 size={12}/></button></div>
-                              <input defaultValue={String(ex.name || "")} onBlur={e => handleUpdateExercise(parseInt(targetDayId), idx, 'name', e.target.value)} className="w-full bg-zinc-900 rounded-lg p-2 text-xs font-bold text-white outline-none focus:border-amber-500" />
-                              <div className="grid grid-cols-2 gap-2"><input defaultValue={String(ex.s || "")} onBlur={e => handleUpdateExercise(parseInt(targetDayId), idx, 's', e.target.value)} className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" placeholder="Series" /><input defaultValue={String(ex.r || "")} onBlur={e => handleUpdateExercise(parseInt(targetDayId), idx, 'r', e.target.value)} className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" placeholder="Reps" /></div>
-                              <textarea defaultValue={String(ex.tip || "")} onBlur={e => handleUpdateExercise(parseInt(targetDayId), idx, 'tip', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-[10px] italic text-white outline-none" />
+                              <div className="flex justify-between items-center"><span className="text-[9px] text-zinc-500 font-bold">Ejercicio {idx + 1}</span><button onClick={() => removeExerciseFromDay(parseInt(targetDayId), idx)} className="text-red-500"><Trash2 size={12}/></button></div>
+                              <input defaultValue={String(ex.name || "")} onBlur={e => modifyExerciseData(parseInt(targetDayId), idx, 'name', e.target.value)} className="w-full bg-zinc-900 rounded-lg p-2 text-xs font-bold text-white outline-none focus:border-amber-500" />
+                              <div className="grid grid-cols-2 gap-2"><input defaultValue={String(ex.s || "")} onBlur={e => modifyExerciseData(parseInt(targetDayId), idx, 's', e.target.value)} className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" placeholder="Series" /><input defaultValue={String(ex.r || "")} onBlur={e => modifyExerciseData(parseInt(targetDayId), idx, 'r', e.target.value)} className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" placeholder="Reps" /></div>
+                              <textarea defaultValue={String(ex.tip || "")} onBlur={e => modifyExerciseData(parseInt(targetDayId), idx, 'tip', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-[10px] italic text-white outline-none" />
                            </div>
                          ))}
                          {targetDayId && (
                            <>
                              <input type="text" placeholder="Nuevo Ejercicio..." className="w-full bg-zinc-800 border border-zinc-700 p-3 rounded-xl text-xs text-white outline-none" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} />
-                             <button onClick={addExercise} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px]">AÑADIR EJERCICIO</button>
+                             <button onClick={appendNewExercise} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px]">AÑADIR EJERCICIO</button>
                            </>
                          )}
                        </div>
@@ -913,14 +823,14 @@ export default function App() {
                                {db.entrenador?.templates?.map(t => <option key={t.id} value={`tmpl_${t.id}`}>Plantilla: {String(t.name || "")}</option>)}
                                {Object.keys(db).map(id => <option key={id} value={`client_${id}`}>Cliente: {String(db[id].name || id)}</option>)}
                             </select>
-                            <button onClick={() => handleCopyRoutine(sourceClientToCopy)} disabled={!sourceClientToCopy} className="w-full bg-blue-600 text-white font-black py-3 rounded-xl text-[10px] disabled:opacity-50">SOBRESCRIBIR RUTINA</button>
+                            <button onClick={() => applyTemplateRoutine(sourceClientToCopy)} disabled={!sourceClientToCopy} className="w-full bg-blue-600 text-white font-black py-3 rounded-xl text-[10px] disabled:opacity-50">SOBRESCRIBIR RUTINA</button>
                          </div>
                          {!isSavingTemplate ? (
                            <button onClick={() => setIsSavingTemplate(true)} className="w-full bg-zinc-800 border border-zinc-700 text-amber-500 py-3 rounded-xl text-[10px] font-black">GUARDAR COMO PLANTILLA</button>
                          ) : (
                            <div className="bg-zinc-800 p-4 rounded-xl space-y-2 border border-zinc-700">
                              <input type="text" placeholder="Nombre para la plantilla..." className="w-full bg-zinc-900 p-3 rounded-xl text-xs text-white outline-none" value={templateNameInput} onChange={e => setTemplateNameInput(e.target.value)} />
-                             <div className="flex gap-2"><button onClick={handleSaveAsTemplate} className="flex-1 bg-amber-500 text-black font-black py-2 rounded-lg text-[10px]">GUARDAR</button><button onClick={() => setIsSavingTemplate(false)} className="flex-1 bg-zinc-700 text-white py-2 rounded-lg text-[10px]">CANCELAR</button></div>
+                             <div className="flex gap-2"><button onClick={saveRoutineTemplate} className="flex-1 bg-amber-500 text-black font-black py-2 rounded-lg text-[10px]">GUARDAR</button><button onClick={() => setIsSavingTemplate(false)} className="flex-1 bg-zinc-700 text-white py-2 rounded-lg text-[10px]">CANCELAR</button></div>
                            </div>
                          )}
                          {currentClientId === 'entrenador' && db.entrenador?.templates?.length > 0 && (
@@ -929,7 +839,7 @@ export default function App() {
                              {db.entrenador.templates.map(t => (
                                 <div key={t.id} className="flex justify-between items-center bg-zinc-900 p-2 rounded-lg border border-red-500/20 mb-2">
                                    <span className="text-[10px] text-zinc-300 truncate">{String(t.name || "")}</span>
-                                   <button onClick={() => handleDeleteTemplate(t.id)} className="text-red-500 p-1"><Trash2 size={12}/></button>
+                                   <button onClick={() => removeRoutineTemplate(t.id)} className="text-red-500 p-1"><Trash2 size={12}/></button>
                                 </div>
                              ))}
                            </div>
@@ -953,21 +863,17 @@ export default function App() {
               ))}
             </div>
 
-            <div className={`${isAdminMode ? "bg-zinc-900 border-zinc-800" : "bg-amber-50 border-amber-100"} p-6 rounded-[2rem] border`}>
+            <div className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-amber-50 border-amber-100 text-zinc-900"} p-6 rounded-[2rem] border shadow-sm`}>
                <h3 className="text-[10px] font-black uppercase text-amber-600 mb-2 flex items-center gap-2"><LayoutDashboard size={14}/> Mensaje del Coach</h3>
-               {isAdminMode ? (
-                 <textarea defaultValue={String(client.advice || "")} onBlur={e => updateUserInCloud(currentClientId, u => ({...u, advice: e.target.value}))} className="w-full bg-transparent text-white outline-none text-sm italic min-h-[60px]" />
-               ) : (
-                 <p className="text-sm italic font-medium leading-relaxed">"{String(client.advice || "")}"</p>
-               )}
+               <p className="text-sm italic font-medium leading-relaxed">"{String(client.advice || "¡A por todas!")}"</p>
             </div>
           </div>
         )}
 
-        {/* --- PESTAÑA DAY --- */}
+        {/* --- DÍA --- */}
         {activeTab === "day" && selectedDay && (
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 relative pb-24 mt-4">
-            {sessionStart && (<div className="fixed top-0 left-0 w-full bg-zinc-900 text-white p-3 z-[70] flex justify-between items-center shadow-lg"><div className="flex items-center gap-2 font-black text-sm tracking-widest text-green-400"><PlayCircle size={16} className="animate-pulse" /> {formatSessionTime(sessionElapsed)}</div><button onClick={finishSession} className="flex items-center gap-1 text-xs font-bold text-red-400 bg-white/10 px-3 py-1.5 rounded-full">FINALIZAR</button></div>)}
+            {sessionStart && (<div className="fixed top-0 left-0 w-full bg-zinc-900 text-white p-3 z-[70] flex justify-between items-center shadow-lg"><div className="flex items-center gap-2 font-black text-sm tracking-widest text-green-400"><PlayCircle size={16} className="animate-pulse" /> {formatTime(sessionElapsed)}</div><button onClick={finishSession} className="flex items-center gap-1 text-xs font-bold text-red-400 bg-white/10 px-3 py-1.5 rounded-full">FINALIZAR</button></div>)}
             <div className="flex justify-between items-center mt-12">
                <button onClick={() => navigateTo("home")} className="text-zinc-400 font-bold text-sm uppercase flex items-center gap-2"><ArrowLeft size={16}/> Volver</button>
                {!sessionStart && <button onClick={() => setSessionStart(Date.now())} className="bg-amber-500 text-black text-[10px] font-black px-6 py-2 rounded-full uppercase shadow-lg">INICIAR CRONO</button>}
@@ -989,7 +895,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- PESTAÑA STATS --- */}
+        {/* --- STATS --- */}
         {activeTab === "stats" && (
           <div className="space-y-6 animate-in fade-in duration-500 mt-4">
             <h2 className={`text-2xl font-black ${isAdminMode ? 'text-white' : 'text-gray-900'}`}>Evolución</h2>
@@ -997,21 +903,13 @@ export default function App() {
                <button onClick={() => setChartMode('weight')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg ${chartMode==='weight' ? (isAdminMode ? 'bg-amber-500 text-black' : 'bg-white shadow text-gray-900') : 'text-zinc-500'}`}>PESO MÁX</button>
                <button onClick={() => setChartMode('volume')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg ${chartMode==='volume' ? (isAdminMode ? 'bg-amber-500 text-black' : 'bg-white shadow text-gray-900') : 'text-zinc-500'}`}>VOLUMEN TOTAL</button>
             </div>
-            {Object.keys(workoutLogs).length === 0 && <div className="text-center py-20 opacity-30 italic">No hay datos suficientes para generar gráficas.</div>}
+            {Object.keys(workoutLogs).length === 0 && <div className="text-center py-20 opacity-30 italic">No hay datos registrados aún.</div>}
             {(client.workoutData.days || []).map(d => (d.exercises || []).map((ex,i) => {
                const l = workoutLogs[ex.name] || []; if(l.length < 1) return null;
-               const isVolume = chartMode === 'volume';
-               
-               let displayVal = 0;
-               if(isVolume) {
-                 const latestLog = logs[0];
-                 displayVal = (parseFloat(latestLog?.weight) || 0) * (parseInt(latestLog?.reps) || 10) * parseInt(ex.s || 3);
-               } else {
-                 displayVal = Math.max(...l.map(x=>parseFloat(x.weight) || 0));
-               }
-
+               const isVol = chartMode === 'volume';
+               let displayVal = isVol ? (parseFloat(l[0]?.weight) || 0) * (parseInt(l[0]?.reps) || 10) * parseInt(ex.s || 3) : Math.max(...l.map(x=>parseFloat(x.weight) || 0));
                return (
-                 <div key={`${d.id}-${i}`} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-100 text-gray-900"} p-6 rounded-[2rem] shadow-sm border`}>
+                 <div key={`${d.id}-${i}`} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-zinc-100 text-gray-900"} p-6 rounded-[2rem] shadow-sm border`}>
                     <div className="flex justify-between items-start mb-2"><div><span className="text-[8px] text-zinc-400 uppercase font-black">{String(d.title || "").split(":")[0]}</span><h4 className="text-lg font-black leading-tight">{String(ex.name || "")}</h4></div><div className={`${isAdminMode ? "text-amber-500" : "text-blue-500"} font-black text-sm`}>{displayVal}kg</div></div>
                     <MiniProgressChart data={l} color={client.color} isAdmin={isAdminMode} mode={chartMode} exSets={ex.s} />
                  </div>
@@ -1020,7 +918,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- PESTAÑA JOURNAL --- */}
+        {/* --- DIARIO --- */}
         {activeTab === "journal" && (
           <div className="space-y-6 animate-in fade-in duration-500 mt-4">
             <div className="flex items-center gap-3 mb-2"><div className={`${isAdminMode ? "bg-amber-500 text-black" : "bg-gray-100 text-gray-600"} p-3 rounded-2xl`}><MessageSquareHeart size={24} /></div><div><h2 className={`text-2xl font-black ${isAdminMode ? "text-white" : "text-gray-900"}`}>Diario</h2><p className="text-xs text-gray-400 uppercase tracking-widest">Notas de {String(client.name || "")}</p></div></div>
@@ -1029,10 +927,10 @@ export default function App() {
                <button onClick={addNote} className={`w-full ${isAdminMode ? "bg-amber-500 text-black" : "bg-blue-600 text-white"} font-black py-4 rounded-xl text-[10px] uppercase`}>Guardar Nota</button>
             </div>
             <div className="space-y-4">
-              {dailyNotes.map(note => (
-                <div key={note.id} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-zinc-300" : "bg-white border-gray-50 text-gray-700"} p-5 rounded-[1.5rem] border shadow-sm flex flex-col gap-3`}>
-                   <div className="flex justify-between items-start w-full"><p className="text-sm leading-relaxed pr-4">{String(note.text || "")}</p><button onClick={() => deleteNote(note.id)} className="text-red-400"><Trash2 size={14}/></button></div>
-                   <div className="flex justify-between items-center"><span className="text-[9px] font-black text-zinc-400">{String(note.date || "")}</span>{note.aiReply ? <div className="bg-amber-500/10 text-amber-500 text-[10px] p-3 rounded-xl italic">Coach: {String(note.aiReply)}</div> : <button onClick={() => handleAiCoachReply(note.id, note.text)} className="text-[10px] text-amber-500 font-bold">+ Sugerencia Coach AI</button>}</div>
+              {dailyNotes.map(n => (
+                <div key={n.id} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-zinc-300" : "bg-white border-gray-50 text-gray-700"} p-5 rounded-[1.5rem] border shadow-sm flex flex-col gap-3`}>
+                   <div className="flex justify-between items-start w-full"><p className="text-sm leading-relaxed pr-4">{String(n.text || "")}</p><button onClick={() => { updateUserInCloud(currentClientId, u => ({...u, notes: u.notes.filter(x => x.id !== n.id)})); }} className="text-red-400"><Trash2 size={14}/></button></div>
+                   <div className="flex justify-between items-center"><span className="text-[9px] font-black text-zinc-400">{String(n.date || "")}</span>{n.aiReply ? <div className="bg-amber-500/10 text-amber-500 text-[10px] p-3 rounded-xl italic">Coach AI: {String(n.aiReply)}</div> : <button onClick={() => handleAiCoachReply(n.id, n.text)} className="text-[10px] text-amber-500 font-bold" disabled={loadingAiNoteId === n.id}>{loadingAiNoteId === n.id ? 'Analizando...' : '+ Sugerencia Coach AI'}</button>}</div>
                 </div>
               ))}
             </div>
@@ -1056,8 +954,8 @@ export default function App() {
               <input type="password" placeholder="Contraseña actual" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={pwdCurrent} onChange={e=>setPwdCurrent(e.target.value)} />
               <input type="password" placeholder="Nueva contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={pwdNew} onChange={e=>setPwdNew(e.target.value)} />
               <input type="password" placeholder="Repite nueva contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={pwdConfirm} onChange={e=>setPwdConfirm(e.target.value)} />
-              {pwdError && <p className="text-red-500 text-[10px] text-center">{pwdError}</p>}
-              {pwdSuccess && <p className="text-green-500 text-[10px] font-bold text-center">{pwdSuccess}</p>}
+              {pwdError && <p className="text-red-500 text-[10px] text-center">{String(pwdError)}</p>}
+              {pwdSuccess && <p className="text-green-500 text-[10px] font-bold text-center">{String(pwdSuccess)}</p>}
               <button onClick={handleChangePassword} className="w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase">ACTUALIZAR</button>
            </div>
         </div>
@@ -1077,14 +975,19 @@ export default function App() {
               </div>
               <input type="text" placeholder="Usuario" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={newClient.username} onChange={e=>setNewClient({...newClient, username:e.target.value})} />
               <input type="text" placeholder="Contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
-              <input type="text" placeholder="Nombre completo" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
-              <button onClick={handleAddClient} className="w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase">CREAR CUENTA</button>
+              <input type="text" placeholder="Nombre completo" className="w-full bg-zinc-900 border border-zinc-700 outline-none text-white p-4 rounded-xl text-xs" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
+              <button onClick={createClientProfile} className="w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase">CREAR CUENTA</button>
               <button onClick={()=>setShowAddClientModal(false)} className="w-full text-zinc-500 text-[10px] font-bold">CANCELAR</button>
            </div>
         </div>
       )}
 
-      {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className="bg-green-600 text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20"><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{toast.message}</span></div></div>)}
+      {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className="bg-green-600 text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20"><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{String(toast.message || "")}</span></div></div>)}
     </div>
   );
+}
+
+function formatTime(t) {
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h > 0 ? `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}` : `${m}:${s.toString().padStart(2, "0")}`;
 }
