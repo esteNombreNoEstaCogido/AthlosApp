@@ -154,13 +154,44 @@ const EJERCICIOS_PREDEFINIDOS = [
 const RUTINA_TAMARA_OFICIAL = [
   { id: 101, title: "DÍA 1: Glúteo Máximo", focus: "Fuerza", warmupType: "warmupAthlos", exercises: [
     { name: "Hip Thrust", s: 4, r: "8-10", tip: "Pausa 2\" arriba.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=zsRrjH2z0N8" },
-    { name: "Peso Muerto Rumano", s: 3, r: "10", tip: "Bajada lenta.", mus: "Isquios", img: "https://images.unsplash.com/photo-1613210915490-b0c0e1f30e4f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=jEy_czNkF2o" }
+    { name: "Peso Muerto Rumano", s: 3, r: "10", tip: "Bajada lenta.", mus: "Isquios", img: "https://images.unsplash.com/photo-1613210915490-b0c0e1f30e4f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=jEy_czNkF2o" },
+    { name: "Sentadilla Búlgara", s: 3, r: "12", tip: "Rodilla atrás.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1535544546519-1563b80b5e4e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=2z7xSJUzVII" }
+  ]},
+  { id: 102, title: "DÍA 2: Glúteo Volumen", focus: "Hipertrofia", warmupType: "warmupLower", exercises: [
+    { name: "Sentadilla", s: 4, r: "10-12", tip: "Profundidad máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
+    { name: "Prensa Pierna", s: 3, r: "12-15", tip: "Rango completo.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1600673748286-d24e97f884f7?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=0q-FGrPCEf8" },
+    { name: "Máquina Glúteo", s: 3, r: "15", tip: "Contracción máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1608805755822-13715af581f7?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=gvdJHG9DL58" }
+  ]},
+  { id: 103, title: "DÍA 3: Postura & Core", focus: "Estabilidad", warmupType: "warmupUpper", exercises: [
+    { name: "Remo a Peso", s: 3, r: "10-12", tip: "Retrae escápula.", mus: "Espalda", img: "https://images.unsplash.com/photo-1525338419e00-a06b8ecf7a90?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=4L9N_AvdZMA" },
+    { name: "Dead Bug", s: 3, r: "12", tip: "Abdomen contraído.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=JB2oyqG50KI" },
+    { name: "Face Pulls", s: 3, r: "15", tip: "Squeeze posterior.", mus: "Hombro", img: "https://images.unsplash.com/photo-1609899753861-25c1a3a74324?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=rep-qVOkqgk" }
+  ]},
+  { id: 104, title: "DÍA 4: Glúteo Densidad", focus: "Fuerza Relativa", warmupType: "warmupAthlos", exercises: [
+    { name: "Peso Muerto Clásico", s: 3, r: "5-6", tip: "Carga máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" },
+    { name: "Step Up Pesado", s: 3, r: "6-8", tip: "Impulsa arriba.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1595910519046-61622f7a19cd?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=lqKZZuApVI0" },
+    { name: "Puente Cadera", s: 3, r: "15", tip: "Pausa 1\" arriba.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=wPM8ic32RhI" }
   ]}
 ];
 
 const INITIAL_DB = {
   entrenador: { username: "coach", password: "1234", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
-  tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } }
+  tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
+  juan: { username: "juan", password: "1234", name: "Juan", color: "from-green-600 to-emerald-500", subtitle: "Force Max", advice: "Recuperate bien.", logs: {}, notes: [], workoutData: { days: [
+    { id: 201, title: "Pecho & Tríceps", focus: "Fuerza", warmupType: "warmupUpper", exercises: [
+      { name: "Press Banca", s: 4, r: "5-6", tip: "Barra olímpica.", mus: "Pecho", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
+      { name: "Dips", s: 3, r: "8-10", tip: "Peso agregado.", mus: "Pecho", img: "https://images.unsplash.com/photo-1598647373885-57fc498494a8?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=SrqOu55lrR8" }
+    ]},
+    { id: 202, title: "Espalda & Bíceps", focus: "Fuerza", warmupType: "warmupUpper", exercises: [
+      { name: "Peso Muerto", s: 3, r: "5", tip: "Máxima carga.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" }
+    ]}
+  ]} },
+  sofia: { username: "sofia", password: "1234", name: "Sofía", color: "from-pink-600 to-rose-500", subtitle: "Tono General", advice: "Hidratate bien.", logs: {}, notes: [], workoutData: { days: [
+    { id: 301, title: "Full Body A", focus: "Tonificación", warmupType: "warmupAthlos", exercises: [
+      { name: "Sentadilla", s: 3, r: "12", tip: "Control total.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
+      { name: "Push-ups", s: 3, r: "15", tip: "Pecho tocando piso.", mus: "Pecho", img: "https://images.unsplash.com/photo-1539143649555-0ac8b3a1b2b0?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=IODxDxX7oi4" }
+    ]}
+  ]} }
 };
 
 const warmupData = {
@@ -522,16 +553,22 @@ export default function App() {
       const cloud = {};
       snap.forEach(d => { cloud[d.id] = d.data(); });
       
-      if (Object.keys(cloud).length === 0) {
-         Object.keys(INITIAL_DB).forEach(k => setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]));
-         setDb(INITIAL_DB);
-      } else {
-         if(!cloud.entrenador?.templates) {
-           if (!cloud.entrenador) cloud.entrenador = INITIAL_DB.entrenador;
-           cloud.entrenador.templates = INITIAL_DB.entrenador.templates;
+      // Si cloud está vacío O falta el entrenador, sincronizar INITIAL_DB
+      if (Object.keys(cloud).length === 0 || !cloud.entrenador) {
+         // Agregar todos los usuarios faltantes
+         Object.keys(INITIAL_DB).forEach(k => {
+           if (!cloud[k]) {
+             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
+             cloud[k] = INITIAL_DB[k];
+           }
+         });
+         // Asegurar que tamara tenga los datos completos oficiales
+         if(cloud.tamara) {
+           cloud.tamara.workoutData = { days: RUTINA_TAMARA_OFICIAL };
+           setDoc(doc(db_cloud, COLLECTION_NAME, 'tamara'), cloud.tamara).catch(err => console.warn("Sync tamara error:", err));
          }
-         setDb(cloud);
       }
+      setDb(cloud);
       setDataLoaded(true);
     }, (err) => {
       console.warn("Firebase Snapshot Error:", err);
