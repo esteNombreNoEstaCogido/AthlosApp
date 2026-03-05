@@ -746,6 +746,11 @@ export default function App() {
         setIsEditingClientRoutine(false);
       }
       
+      // Si el usuario actual era el eliminado, cambiar a entrenador
+      if (currentClientId === clientId) {
+        setCurrentClientId('entrenador');
+      }
+      
       setIsSyncing(false);
       setShowDeleteConfirmModal(false);
       setClientToDelete(null);
@@ -920,7 +925,7 @@ export default function App() {
         </div>
 
         {activeTab === "home" && (
-          <div className="space-y-6 animate-in fade-in duration-500">
+          <div className="space-y-8 animate-in fade-in duration-500">
             <div className={`bg-gradient-to-br ${isAdminMode && !isEditingClientRoutine ? "from-zinc-800 to-zinc-900 border border-zinc-700" : String(client.color || "from-blue-600 to-indigo-500")} p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden`}>
               <div className="flex flex-col gap-1 relative z-10">
                  {isAdminMode && !isEditingClientRoutine ? (
@@ -944,7 +949,7 @@ export default function App() {
             </div>
 
             {isAdminMode && (
-              <div className="bg-zinc-900 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-6">
+              <div className="bg-zinc-900 p-8 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-8 mt-8">
                 <div className="flex justify-between items-center text-[10px] font-black uppercase text-zinc-500">
                   <div className="flex items-center gap-2"><Users size={14} className="text-amber-500" /> Clientes</div>
                   <button onClick={() => setShowAddClientModal(true)} className="bg-zinc-800 text-amber-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1"><Plus size={12}/> Nuevo</button>
@@ -956,7 +961,7 @@ export default function App() {
                 </div>
                 
                 {editingClientId && db[editingClientId] && (
-                  <div className="border-t border-zinc-800 pt-6 space-y-6 animate-in slide-in-from-top-4">
+                  <div className="border-t border-zinc-800 pt-8 space-y-8 animate-in slide-in-from-top-4 mt-6">
                     {/* HEADER DEL CLIENTE */}
                     <div className={`bg-gradient-to-br ${String(db[editingClientId].color || "from-blue-600")} p-6 rounded-2xl text-white relative`}>
                       <div className="absolute top-4 right-4 flex gap-2">
@@ -988,7 +993,7 @@ export default function App() {
                       
                       {!editingDayId ? (
                         <>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-4">
                             {(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).map((day, idx) => (
                               <div key={day.id} className="relative group">
                                 <button onClick={() => setEditingDayId(day.id)} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-4 rounded-xl transition-all active:scale-95 text-left">
@@ -1024,7 +1029,7 @@ export default function App() {
                               <>
                                 <div className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700">
                                   <h5 className="font-black text-white mb-3">{String(day?.title || "Día")}</h5>
-                                  <div className="grid grid-cols-2 gap-2">
+                                  <div className="grid grid-cols-2 gap-4">
                                     <input key={`dayedit-focus-${editingDayId}`} defaultValue={String(day?.focus || "")} onBlur={e => modifyDayData(editingDayId, 'focus', e.target.value)} placeholder="Focus..." className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" />
                                     <button onClick={() => removeDayFromRoutine(editingDayId)} className="bg-red-500/10 text-red-500 text-[9px] font-bold rounded active:scale-95 flex items-center justify-center gap-1"><Trash2 size={14}/> Eliminar</button>
                                   </div>
@@ -1042,7 +1047,7 @@ export default function App() {
                                           <button onClick={() => removeExerciseFromDay(editingDayId, idx)} className="text-red-400 hover:text-red-500 active:scale-90"><Trash2 size={14}/></button>
                                         </div>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2">
+                                      <div className="grid grid-cols-2 gap-4">
                                         <div>
                                           <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Series</label>
                                           <input type="number" key={`ex-s-${editingDayId}-${idx}`} defaultValue={String(ex.s || 3)} onBlur={e => modifyExerciseData(editingDayId, idx, 's', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none" />
@@ -1052,7 +1057,7 @@ export default function App() {
                                           <input key={`ex-r-${editingDayId}-${idx}`} defaultValue={String(ex.r || "12")} onBlur={e => modifyExerciseData(editingDayId, idx, 'r', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none" />
                                         </div>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-2">
+                                      <div className="grid grid-cols-2 gap-4">
                                         <div>
                                           <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Grupo</label>
                                           <input key={`ex-mus-${editingDayId}-${idx}`} defaultValue={String(ex.mus || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'mus', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none" />
@@ -1086,7 +1091,7 @@ export default function App() {
                                     </div>
                                   )}
                                   <input key={`newex-name-${editingDayId}`} type="text" placeholder="Nombre..." maxLength="50" className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} />
-                                  <div className="grid grid-cols-2 gap-2">
+                                  <div className="grid grid-cols-2 gap-4">
                                     <input type="number" placeholder="Series" value={newEx.s} onChange={e => setNewEx({...newEx, s: parseInt(e.target.value) || 3})} className="bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" />
                                     <input type="text" placeholder="Reps (ej: 10-12)" value={newEx.r} onChange={e => setNewEx({...newEx, r: e.target.value})} className="bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" />
                                   </div>
@@ -1106,7 +1111,7 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-6 mt-8">
               {validDays.length === 0 && !isAdminMode ? (
                 <div className="text-center py-10 opacity-40 font-bold text-sm italic">Rutina en construcción...</div>
               ) : null}
@@ -1127,7 +1132,7 @@ export default function App() {
 
         {/* --- DÍA --- */}
         {activeTab === "day" && selectedDay && (
-          <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 relative pb-24 mt-4">
+          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 relative pb-24 mt-4">
             {timerDuration && <GlobalRestTimer key={timerKey} initialSeconds={timerDuration} onCancel={() => setTimerDuration(null)} />}
             {sessionStart && (
                <div className="fixed top-0 left-0 w-full bg-zinc-900 text-white p-3 z-[70] flex justify-between items-center shadow-lg">
@@ -1158,7 +1163,7 @@ export default function App() {
 
         {/* --- STATS --- */}
         {activeTab === "stats" && (
-          <div className="space-y-6 animate-in fade-in duration-500 mt-4">
+          <div className="space-y-8 animate-in fade-in duration-500 mt-4">
             <h2 className="text-2xl font-black">Evolución</h2>
             <div className={`flex gap-2 p-1 rounded-xl ${isAdminMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-gray-100'}`}>
                <button onClick={() => setChartMode('weight')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg ${chartMode==='weight' ? (isAdminMode ? 'bg-amber-500 text-black shadow' : 'bg-white shadow text-zinc-900') : 'text-zinc-500'}`}>PESO MÁX</button>
@@ -1190,7 +1195,7 @@ export default function App() {
 
         {/* --- DIARIO --- */}
         {activeTab === "journal" && (
-          <div className="space-y-6 animate-in fade-in duration-500 mt-4">
+          <div className="space-y-8 animate-in fade-in duration-500 mt-4">
             <h2 className="text-2xl font-black">Diario</h2>
             <div className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-100 text-gray-900"} p-6 rounded-[2rem] border shadow-sm space-y-3`}>
                <textarea placeholder="¿Cómo te has sentido hoy?..." className={`w-full ${isAdminMode ? "bg-zinc-950 border-zinc-800" : "bg-gray-50 border-gray-100"} border rounded-xl p-4 text-xs font-medium focus:border-amber-500 outline-none h-24`} value={noteText} onChange={e => setNoteText(e.target.value)} />
