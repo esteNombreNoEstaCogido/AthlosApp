@@ -517,6 +517,7 @@ export default function App() {
   const [sessionStart, setSessionStart] = useState(null);
   const [sessionElapsed, setSessionElapsed] = useState(0);
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [exitAttemptTime, setExitAttemptTime] = useState(null);
   
   const [showEditor, setShowEditor] = useState(false);
   const [editorTab, setEditorTab] = useState("day");
@@ -952,6 +953,38 @@ export default function App() {
     else setSessionElapsed(0);
     return () => clearInterval(interval);
   }, [sessionStart]);
+
+  // Manejo del botón atrás del dispositivo/navegador
+  useEffect(() => {
+    const handlePopState = () => {
+      // Si estamos en la vista de un día, volver al home
+      if (activeTab === "day") {
+        setActiveTab("home");
+        setSelectedDay(null);
+      } else if (activeTab === "home" && !isAdminMode && !loggedInUser) {
+        // Ya estamos en login, dejar que se salga
+        return;
+      } else if (activeTab === "home" && !isAdminMode) {
+        // En home: mostrar aviso y esperar segundo intento
+        const now = Date.now();
+        if (exitAttemptTime && now - exitAttemptTime < 2000) {
+          // Segundo intento dentro de 2 segundos: salir
+          setToast({ type: "INFO", message: "¡Hasta pronto! 👋" });
+          setTimeout(() => window.history.back(), 500);
+        } else {
+          // Primer intento: mostrar aviso
+          setExitAttemptTime(now);
+          setToast({ type: "WARNING", message: "Presiona atrás otra vez para salir" });
+          setTimeout(() => setExitAttemptTime(null), 2500);
+          window.history.forward(); // Prevenir que se salga en el primer intento
+        }
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [activeTab, isAdminMode, loggedInUser, exitAttemptTime]);
+
 
   const finishSession = () => { 
     const h = Math.floor(sessionElapsed / 3600), m = Math.floor((sessionElapsed % 3600) / 60);
