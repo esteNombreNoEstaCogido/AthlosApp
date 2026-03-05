@@ -177,21 +177,10 @@ const RUTINA_TAMARA_OFICIAL = [
 const INITIAL_DB = {
   entrenador: { username: "coach", password: "1234", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
   tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
-  juan: { username: "juan", password: "1234", name: "Juan", color: "from-green-600 to-emerald-500", subtitle: "Force Max", advice: "Recuperate bien.", logs: {}, notes: [], workoutData: { days: [
-    { id: 201, title: "Pecho & Tríceps", focus: "Fuerza", warmupType: "warmupUpper", exercises: [
-      { name: "Press Banca", s: 4, r: "5-6", tip: "Barra olímpica.", mus: "Pecho", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
-      { name: "Dips", s: 3, r: "8-10", tip: "Peso agregado.", mus: "Pecho", img: "https://images.unsplash.com/photo-1598647373885-57fc498494a8?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=SrqOu55lrR8" }
-    ]},
-    { id: 202, title: "Espalda & Bíceps", focus: "Fuerza", warmupType: "warmupUpper", exercises: [
-      { name: "Peso Muerto", s: 3, r: "5", tip: "Máxima carga.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" }
-    ]}
-  ]} },
-  sofia: { username: "sofia", password: "1234", name: "Sofía", color: "from-pink-600 to-rose-500", subtitle: "Tono General", advice: "Hidratate bien.", logs: {}, notes: [], workoutData: { days: [
-    { id: 301, title: "Full Body A", focus: "Tonificación", warmupType: "warmupAthlos", exercises: [
-      { name: "Sentadilla", s: 3, r: "12", tip: "Control total.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
-      { name: "Push-ups", s: 3, r: "15", tip: "Pecho tocando piso.", mus: "Pecho", img: "https://images.unsplash.com/photo-1539143649555-0ac8b3a1b2b0?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=IODxDxX7oi4" }
-    ]}
-  ]} }
+  pivon: { username: "pivon", password: "1234", name: "Pivón", color: "from-purple-600 to-violet-500", subtitle: "Entrenamiento", advice: "Descansa adecuadamente.", logs: {}, notes: [], workoutData: { days: [] } },
+  sebas: { username: "sebas", password: "1234", name: "Sebastián", color: "from-orange-600 to-amber-500", subtitle: "Full Body", advice: "Mantén la forma.", logs: {}, notes: [], workoutData: { days: [] } },
+  sebas2: { username: "sebas2", password: "1234", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [] } },
+  claudia: { username: "claudia", password: "1234", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Nuevo Plan", advice: "Dale todo.", logs: {}, notes: [], workoutData: { days: [] } }
 };
 
 const warmupData = {
@@ -553,20 +542,21 @@ export default function App() {
       const cloud = {};
       snap.forEach(d => { cloud[d.id] = d.data(); });
       
-      // Si cloud está vacío O falta el entrenador, sincronizar INITIAL_DB
-      if (Object.keys(cloud).length === 0 || !cloud.entrenador) {
-         // Agregar todos los usuarios faltantes
+      // Si no hay datos en cloud o falta entrenador, sincronizar SOLO los faltantes
+      if (Object.keys(cloud).length === 0) {
+         // Agregar TODOS los usuarios por primera vez
+         Object.keys(INITIAL_DB).forEach(k => {
+           setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
+           cloud[k] = INITIAL_DB[k];
+         });
+      } else {
+         // Cloud tiene datos: agregar SOLO usuarios faltantes, NO sobrescribir existentes
          Object.keys(INITIAL_DB).forEach(k => {
            if (!cloud[k]) {
-             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
+             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
              cloud[k] = INITIAL_DB[k];
            }
          });
-         // Asegurar que tamara tenga los datos completos oficiales
-         if(cloud.tamara) {
-           cloud.tamara.workoutData = { days: RUTINA_TAMARA_OFICIAL };
-           setDoc(doc(db_cloud, COLLECTION_NAME, 'tamara'), cloud.tamara).catch(err => console.warn("Sync tamara error:", err));
-         }
       }
       setDb(cloud);
       setDataLoaded(true);
