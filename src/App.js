@@ -177,10 +177,34 @@ const RUTINA_TAMARA_OFICIAL = [
 const INITIAL_DB = {
   entrenador: { username: "coach", password: "1234", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
   tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
-  pivon: { username: "pivon", password: "1234", name: "Pivón", color: "from-purple-600 to-violet-500", subtitle: "Entrenamiento", advice: "Descansa adecuadamente.", logs: {}, notes: [], workoutData: { days: [] } },
-  sebas: { username: "sebas", password: "1234", name: "Sebastián", color: "from-orange-600 to-amber-500", subtitle: "Full Body", advice: "Mantén la forma.", logs: {}, notes: [], workoutData: { days: [] } },
-  sebas2: { username: "sebas2", password: "1234", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [] } },
-  claudia: { username: "claudia", password: "1234", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Nuevo Plan", advice: "Dale todo.", logs: {}, notes: [], workoutData: { days: [] } }
+  pivon: { username: "pivon", password: "1234", name: "Pivón", color: "from-purple-600 to-violet-500", subtitle: "Entrenamiento", advice: "Descansa adecuadamente.", logs: {}, notes: [], workoutData: { days: [
+    { id: 401, title: "Pecho", focus: "Hipertrofia", warmupType: "warmupUpper", exercises: [
+      { name: "Press Banca", s: 4, r: "8-10", tip: "Barra olímpica.", mus: "Pecho", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
+      { name: "Aperturas", s: 3, r: "12", tip: "Control total.", mus: "Pecho", img: "https://images.unsplash.com/photo-1598647373885-57fc498494a8?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=SrqOu55lrR8" }
+    ]}
+  ]} },
+  sebas: { username: "sebas", password: "1234", name: "Sebastián", color: "from-orange-600 to-amber-500", subtitle: "Full Body", advice: "Mantén la forma.", logs: {}, notes: [], workoutData: { days: [
+    { id: 402, title: "Full Body A", focus: "Equilibrado", warmupType: "warmupAthlos", exercises: [
+      { name: "Sentadilla", s: 3, r: "10-12", tip: "Profundidad máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
+      { name: "Press Banca", s: 3, r: "8-10", tip: "Controlado.", mus: "Pecho", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" }
+    ]},
+    { id: 403, title: "Full Body B", focus: "Equilibrado", warmupType: "warmupAthlos", exercises: [
+      { name: "Peso Muerto", s: 3, r: "6-8", tip: "Carga máxima.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" },
+      { name: "Remo", s: 3, r: "10", tip: "Retrae escápula.", mus: "Espalda", img: "https://images.unsplash.com/photo-1525338419e00-a06b8ecf7a90?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=4L9N_AvdZMA" }
+    ]}
+  ]} },
+  sebas2: { username: "sebas2", password: "1234", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [
+    { id: 404, title: "Lower Strength", focus: "Fuerza", warmupType: "warmupLower", exercises: [
+      { name: "Sentadilla Pesada", s: 5, r: "5", tip: "Máxima carga.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
+      { name: "Peso Muerto", s: 3, r: "5", tip: "Carga máxima.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" }
+    ]}
+  ]} },
+  claudia: { username: "claudia", password: "1234", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Nuevo Plan", advice: "Dale todo.", logs: {}, notes: [], workoutData: { days: [
+    { id: 405, title: "Cardio & Core", focus: "Resistencia", warmupType: "warmupAthlos", exercises: [
+      { name: "Burpees", s: 3, r: "15", tip: "Ritmo constante.", mus: "Full Body", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
+      { name: "Plancha", s: 3, r: "45s", tip: "Cuerpo recto.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=JB2oyqG50KI" }
+    ]}
+  ]} }
 };
 
 const warmupData = {
@@ -553,8 +577,13 @@ export default function App() {
          // Cloud tiene datos: agregar SOLO usuarios faltantes, NO sobrescribir existentes
          Object.keys(INITIAL_DB).forEach(k => {
            if (!cloud[k]) {
+             // Usuario completamente faltante: agregar desde INITIAL_DB
              setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
              cloud[k] = INITIAL_DB[k];
+           } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
+             // Usuario existe pero le faltan las tablas: llenar desde INITIAL_DB
+             cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
+             setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(err => console.warn("Sync workout error:", err));
            }
          });
       }
