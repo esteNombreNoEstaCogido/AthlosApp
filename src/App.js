@@ -183,14 +183,37 @@ const INITIAL_DB = {
       { name: "Aperturas", s: 3, r: "12", tip: "Control total.", mus: "Pecho", img: "https://images.unsplash.com/photo-1598647373885-57fc498494a8?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=SrqOu55lrR8" }
     ]}
   ]} },
-  sebas: { username: "sebas", password: "1234", name: "Sebastián", color: "from-orange-600 to-amber-500", subtitle: "Full Body", advice: "Mantén la forma.", logs: {}, notes: [], workoutData: { days: [
-    { id: 402, title: "Full Body A", focus: "Equilibrado", warmupType: "warmupAthlos", exercises: [
-      { name: "Sentadilla", s: 3, r: "10-12", tip: "Profundidad máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
-      { name: "Press Banca", s: 3, r: "8-10", tip: "Controlado.", mus: "Pecho", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" }
+  sebas: { username: "sebas", password: "6100", name: "Sebas Coach", color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: [
+    { id: 11, title: "LUNES: PUSH", focus: "Pectoral Superior + Tríceps", warmupType: "warmupUpper", isCircuit: false, exercises: [
+      { name: "Press Inclinado Mancuernas", s: 3, r: "8-10", tip: "RIR 1. Más seguro para el hombro.", mus: "Pecho Sup", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado+mancuernas+tecnica" },
+      { name: "Press Pecho Máquina Convergente", s: 3, r: "10-12", tip: "RIR 0 en la última serie.", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+maquina+convergente+pecho" },
+      { name: "Cruce Poleas (Abajo-Arriba)", s: 3, r: "15", tip: "Clave para 'cerrar' el pecho por arriba.", mus: "Pecho Sup", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=cruce+poleas+ascendente" },
+      { name: "Extensiones Tríceps Polea", s: 3, r: "12-15", tip: "Cuerda. Superserie con fondos.", mus: "Tríceps", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extensiones+triceps+polea+cuerda" }
     ]},
-    { id: 403, title: "Full Body B", focus: "Equilibrado", warmupType: "warmupAthlos", exercises: [
-      { name: "Peso Muerto", s: 3, r: "6-8", tip: "Carga máxima.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" },
-      { name: "Remo", s: 3, r: "10", tip: "Retrae escápula.", mus: "Espalda", img: "https://images.unsplash.com/photo-1525338419e00-a06b8ecf7a90?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=4L9N_AvdZMA" }
+    { id: 12, title: "MARTES: PULL", focus: "Espalda + Bíceps", warmupType: "warmupUpper", isCircuit: false, exercises: [
+      { name: "Dominadas", s: 3, r: "Fallo", tip: "RIR 1. Controla el descenso.", mus: "Espalda", img: "https://images.unsplash.com/photo-1598971639058-aba3c72e9c73?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=tecnica+dominadas+espalda" },
+      { name: "Remo Polea Baja (Neutro)", s: 3, r: "10", tip: "Aprieta escápulas al final.", mus: "Espalda Media", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea+baja+neutro" },
+      { name: "Pull-over Polea Alta", s: 3, r: "15", tip: "Cuerda. Máximo estiramiento.", mus: "Dorsal", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=pullover+polea+alta+cuerda" },
+      { name: "Facepulls", s: 3, r: "20", tip: "Crucial para postura y hombro.", mus: "Hombro Post", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=facepull+tecnica" },
+      { name: "Curl Barra Z", s: 3, r: "12", tip: "Sin balanceos.", mus: "Bíceps", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+barra+z" }
+    ]},
+    { id: 13, title: "MIÉRCOLES: LEGS", focus: "Pierna Completa", warmupType: "warmupLower", isCircuit: false, exercises: [
+      { name: "Prensa de Piernas", s: 4, r: "12-15", tip: "Dropset al fallo en la última.", mus: "Piernas", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+piernas+tecnica" },
+      { name: "Extensiones Cuádriceps", s: 3, r: "10+10", tip: "10 lentas + 10 explosivas.", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1574673139055-520448d31705?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extensiones+cuadriceps" },
+      { name: "Curl Femoral Sentado", s: 3, r: "12", tip: "Aguanta 2s contracción.", mus: "Isquios", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral+sentado" },
+      { name: "Gemelo en Prensa", s: 4, r: "15", tip: "Estira 2s abajo.", mus: "Gemelos", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=gemelo+prensa" }
+    ]},
+    { id: 14, title: "JUEVES: PUSH B", focus: "Hombro + Pecho Sup", warmupType: "warmupUpper", isCircuit: false, exercises: [
+      { name: "Press Militar Mancuernas", s: 3, r: "8-10", tip: "Sentado, espalda apoyada.", mus: "Hombros", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar+sentado+mancuernas" },
+      { name: "Elevaciones Laterales Polea", s: 4, r: "15", tip: "Brazo por detrás de espalda.", mus: "Hombro Lat", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevaciones+laterales+polea+detras" },
+      { name: "Press Inclinado Multipower", s: 3, r: "12", tip: "Controla la bajada lenta.", mus: "Pecho Sup", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado+multipower" },
+      { name: "Cruces en Polea Media", s: 3, r: "15", tip: "Máximo bombeo.", mus: "Pecho", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=cruce+poleas+pecho+medio" }
+    ]},
+    { id: 15, title: "VIERNES: PULL B", focus: "Espalda + Abdomen", warmupType: "warmupUpper", isCircuit: false, exercises: [
+      { name: "Jalón al Pecho", s: 3, r: "10-12", tip: "Agarre ancho.", mus: "Dorsales", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+al+pecho+ancho" },
+      { name: "Remo Mancuerna", s: 3, r: "12", tip: "A una mano.", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+mancuerna+una+mano" },
+      { name: "Remo al Cuello Polea", s: 3, r: "15", tip: "Agarre ancho.", mus: "Hombro", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+al+cuello+polea+ancho" },
+      { name: "Rueda Abdominal", s: 4, r: "Fallo", tip: "Control lumbar.", mus: "Abdomen", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rueda+abdominal+tecnica" }
     ]}
   ]} },
   sebas2: { username: "sebas2", password: "1234", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [
