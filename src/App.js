@@ -224,7 +224,7 @@ const ProgressBar = ({ label, current, previous, color = "#f59e0b" }) => {
   const isGain = change > 0;
   
   return (
-    <div className="space-y-2 mb-4">
+    <div className="space-y-4 mb-4">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-black text-white uppercase">{label}</span>
         <span className={`text-[9px] font-bold ${isGain ? 'text-green-500' : 'text-red-500'}`}>
@@ -372,7 +372,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
               {(Array.isArray(exerciseNotes) ? exerciseNotes : []).length > 0 && <span className="bg-amber-500 text-black px-2 py-0.5 rounded-full text-[8px] font-bold">{(Array.isArray(exerciseNotes) ? exerciseNotes : []).length}</span>}
             </button>
             {showNotes && (
-              <div className={`mt-2 p-4 rounded-xl border space-y-2 animate-in slide-in-from-top-4 ${isAdmin ? "bg-zinc-800/50 border-zinc-700" : "bg-gray-50 border-gray-100"}`}>
+              <div className={`mt-2 p-4 rounded-xl border space-y-4 animate-in slide-in-from-top-4 ${isAdmin ? "bg-zinc-800/50 border-zinc-700" : "bg-gray-50 border-gray-100"}`}>
                 <div className="flex gap-2">
                   <input type="text" placeholder="Altura máquina, ajustes..." className={`flex-1 p-2 rounded-lg text-xs outline-none ${isAdmin ? "bg-zinc-900 border-zinc-700 text-white" : "bg-white border-gray-200 text-gray-900"} border`} maxLength="100" value={noteInput} onChange={e => setNoteInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (noteInput.trim() && (onAddExerciseNote(safeName, noteInput), setNoteInput("")))} />
                   <button onClick={() => { if(noteInput.trim()) { onAddExerciseNote(safeName, noteInput); setNoteInput(""); } }} className={`px-3 rounded-lg font-bold text-[9px] ${isAdmin ? "bg-amber-500 text-black" : "bg-blue-500 text-white"}`}>+</button>
@@ -729,16 +729,10 @@ export default function App() {
     
     setIsSyncing(true);
     try {
-      // Eliminar de Firebase si está online
-      if (navigator.onLine) {
-        await deleteDoc(doc(db_cloud, COLLECTION_NAME, clientId)).catch(()=>{});
+      // Si el usuario actual era el eliminado, CAMBIAR PRIMERO a entrenador
+      if (currentClientId === clientId) {
+        setCurrentClientId('entrenador');
       }
-      // Eliminar del estado local
-      setDb(prev => { 
-        const n = {...prev}; 
-        delete n[clientId]; 
-        return n; 
-      });
       
       // Si estábamos editando ese cliente, volver al admin
       if (editingClientId === clientId) {
@@ -746,10 +740,17 @@ export default function App() {
         setIsEditingClientRoutine(false);
       }
       
-      // Si el usuario actual era el eliminado, cambiar a entrenador
-      if (currentClientId === clientId) {
-        setCurrentClientId('entrenador');
+      // LUEGO eliminar de Firebase si está online
+      if (navigator.onLine) {
+        await deleteDoc(doc(db_cloud, COLLECTION_NAME, clientId)).catch(()=>{});
       }
+      
+      // FINALMENTE eliminar del estado local
+      setDb(prev => { 
+        const n = {...prev}; 
+        delete n[clientId]; 
+        return n; 
+      });
       
       setIsSyncing(false);
       setShowDeleteConfirmModal(false);
@@ -954,21 +955,21 @@ export default function App() {
                   <div className="flex items-center gap-2"><Users size={14} className="text-amber-500" /> Clientes</div>
                   <button onClick={() => setShowAddClientModal(true)} className="bg-zinc-800 text-amber-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1"><Plus size={12}/> Nuevo</button>
                 </div>
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+                <div className="flex gap-6 overflow-x-auto scrollbar-hide pb-4">
                   {Object.keys(db).filter(id => id !== 'entrenador').map(id => (
                     <button key={id} onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase shrink-0 transition-all ${editingClientId === id ? 'bg-amber-500 text-black shadow-lg scale-105' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}>{String(db[id].name || id)}</button>
                   ))}
                 </div>
                 
                 {editingClientId && db[editingClientId] && (
-                  <div className="border-t border-zinc-800 pt-8 space-y-8 animate-in slide-in-from-top-4 mt-6">
+                  <div className="border-t border-zinc-800 pt-12 space-y-12 animate-in slide-in-from-top-4 mt-8">
                     {/* HEADER DEL CLIENTE */}
                     <div className={`bg-gradient-to-br ${String(db[editingClientId].color || "from-blue-600")} p-6 rounded-2xl text-white relative`}>
                       <div className="absolute top-4 right-4 flex gap-2">
                         <button onClick={() => generatePDFReport(db[editingClientId], Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : [])} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Download size={14}/> PDF</button>
                         <button onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="bg-red-500/30 hover:bg-red-500/40 text-red-200 p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Trash2 size={14}/> Eliminar</button>
                       </div>
-                      <div className="space-y-4">
+                      <div className="space-y-6">
                         <div>
                           <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Nombre</label>
                           <input key={`name-${editingClientId}`} defaultValue={String(db[editingClientId].name || "")} maxLength="50" onBlur={e => updateUserInCloud(editingClientId, u => ({...u, name: sanitizeInput(e.target.value)}))} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-black text-lg outline-none" />
@@ -985,7 +986,7 @@ export default function App() {
                     </div>
 
                     {/* SELECTOR DE DÍAS */}
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       <div className="flex justify-between items-center">
                         <h4 className="text-[10px] font-black uppercase text-zinc-400">Días de Entrenamiento ({(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).length})</h4>
                         {editingDayId && <button onClick={() => setEditingDayId(null)} className="text-amber-500 text-[9px] font-bold">← Volver</button>}
@@ -993,10 +994,10 @@ export default function App() {
                       
                       {!editingDayId ? (
                         <>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-6">
                             {(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).map((day, idx) => (
                               <div key={day.id} className="relative group">
-                                <button onClick={() => setEditingDayId(day.id)} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-4 rounded-xl transition-all active:scale-95 text-left">
+                                <button onClick={() => setEditingDayId(day.id)} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-5 rounded-xl transition-all active:scale-95 text-left">
                                   <p className="text-[9px] text-zinc-400 font-bold uppercase group-hover:text-amber-500 transition-colors">{String(day.focus || "")}</p>
                                   <p className="text-sm font-black text-white mt-1 line-clamp-2">{String(day.title || "Día")}</p>
                                   <p className="text-[8px] text-zinc-500 mt-2">{(Array.isArray(day.exercises) ? day.exercises : []).length} ejercicios</p>
@@ -1009,7 +1010,7 @@ export default function App() {
                             ))}
                           </div>
                           
-                          <div className="space-y-3 bg-zinc-800/30 p-4 rounded-xl border border-zinc-700/50">
+                          <div className="space-y-4 bg-zinc-800/30 p-6 rounded-xl border border-zinc-700/50">
                             <input key={`newday-title-${editingClientId}`} type="text" placeholder="Nombre del día..." className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none focus:border-amber-500" value={newDay.title} onChange={e => setNewDay({...newDay, title: e.target.value})} />
                             <input key={`newday-focus-${editingClientId}`} type="text" placeholder="Focus (ej: Fuerza, Hipertrofia)..." className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none focus:border-amber-500" value={newDay.focus} onChange={e => setNewDay({...newDay, focus: e.target.value})} />
                             <select key={`newday-warmup-${editingClientId}`} value={newDay.warmupType} onChange={e => setNewDay({...newDay, warmupType: e.target.value})} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none">
@@ -1027,18 +1028,18 @@ export default function App() {
                             const day = db[editingClientId].workoutData?.days?.find(d => d.id === editingDayId);
                             return (
                               <>
-                                <div className="bg-zinc-800/50 p-4 rounded-xl border border-zinc-700">
-                                  <h5 className="font-black text-white mb-3">{String(day?.title || "Día")}</h5>
+                                <div className="bg-zinc-800/50 p-6 rounded-xl border border-zinc-700 space-y-4">
+                                  <h5 className="font-black text-white text-sm">{String(day?.title || "Día")}</h5>
                                   <div className="grid grid-cols-2 gap-4">
                                     <input key={`dayedit-focus-${editingDayId}`} defaultValue={String(day?.focus || "")} onBlur={e => modifyDayData(editingDayId, 'focus', e.target.value)} placeholder="Focus..." className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" />
                                     <button onClick={() => removeDayFromRoutine(editingDayId)} className="bg-red-500/10 text-red-500 text-[9px] font-bold rounded active:scale-95 flex items-center justify-center gap-1"><Trash2 size={14}/> Eliminar</button>
                                   </div>
                                 </div>
 
-                                <div className="space-y-3">
+                                <div className="space-y-4 mt-6">
                                   <h5 className="text-[10px] font-black uppercase text-zinc-400">Ejercicios ({(Array.isArray(day?.exercises) ? day.exercises : []).length})</h5>
                                   {(Array.isArray(day?.exercises) ? day.exercises : []).map((ex, idx) => (
-                                    <div key={idx} className="bg-zinc-800/70 p-4 rounded-xl border border-zinc-700/50 space-y-2 group">
+                                    <div key={idx} className="bg-zinc-800/70 p-5 rounded-xl border border-zinc-700/50 space-y-4 group">
                                       <div className="flex justify-between items-start gap-2">
                                         <input key={`ex-name-${editingDayId}-${idx}`} defaultValue={String(ex.name || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'name', e.target.value)} className="flex-1 bg-zinc-900 p-2 rounded font-bold text-white text-sm outline-none" />
                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1076,9 +1077,9 @@ export default function App() {
                                 </div>
 
                                 {/* AGREGAR EJERCICIO */}
-                                <div className="bg-zinc-800 p-4 rounded-xl border border-zinc-700 space-y-3">
+                                <div className="bg-zinc-800 p-6 rounded-xl border border-zinc-700 space-y-4 mt-8">
                                   <h5 className="text-[10px] font-black uppercase text-zinc-400">Nuevo Ejercicio</h5>
-                                  <div className="space-y-2">
+                                  <div className="space-y-3">
                                     <label className="text-[9px] text-zinc-500 font-bold block">Selecciona de predefinidos:</label>
                                     <select value={selectedExerciseTemplate} onChange={e => selectExerciseTemplate(e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700">
                                       <option value="">-- Escoge un ejercicio --</option>
