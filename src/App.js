@@ -177,10 +177,30 @@ const RUTINA_TAMARA_OFICIAL = [
 const INITIAL_DB = {
   entrenador: { username: "coach", password: "1234", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
   tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
-  pivon: { username: "pivon", password: "1234", name: "Pivón", color: "from-purple-600 to-violet-500", subtitle: "Entrenamiento", advice: "Descansa adecuadamente.", logs: {}, notes: [], workoutData: { days: [
-    { id: 401, title: "Pecho", focus: "Hipertrofia", warmupType: "warmupUpper", exercises: [
-      { name: "Press Banca", s: 4, r: "8-10", tip: "Barra olímpica.", mus: "Pecho", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
-      { name: "Aperturas", s: 3, r: "12", tip: "Control total.", mus: "Pecho", img: "https://images.unsplash.com/photo-1598647373885-57fc498494a8?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=SrqOu55lrR8" }
+  pivon: { username: "pivon", password: "1234", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero y espalda sana", advice: "Técnica perfecta por tu escoliosis.", logs: {}, notes: [], workoutData: { days: [
+    { id: 201, title: "Día 1: Glúteos e Isquios", focus: "Fuerza", warmupType: "warmupLower", isCircuit: false, exercises: [
+      { name: "Hip Thrust", s: 4, r: "6-8", tip: "Bajada 3s.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=tecnica+hip+thrust" },
+      { name: "Peso Muerto Rumano", s: 3, r: "10-12", tip: "Barra pegada.", mus: "Isquios", img: "https://images.unsplash.com/photo-1594737625785-a2bad9931c60?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano" },
+      { name: "Abducción en Polea", s: 3, r: "15", tip: "Torso inclinado.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+polea" },
+      { name: "Curl Femoral", s: 3, r: "12", tip: "Espalda estable.", mus: "Isquios", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral" }
+    ]},
+    { id: 202, title: "Día 2: Espalda y Core", focus: "Postura", warmupType: "warmupUpper", isCircuit: false, exercises: [
+      { name: "Jalón Pecho Neutro", s: 3, r: "6-8", tip: "Hacia ombligo.", mus: "Dorsal", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+pecho+neutro" },
+      { name: "Remo Polea Baja", s: 3, r: "12", tip: "Control escapular.", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea+baja" },
+      { name: "Facepulls", s: 3, r: "15", tip: "Salud hombro.", mus: "Hombro", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=facepull+polea" },
+      { name: "Deadbug", s: 3, r: "1 min", tip: "Lumbar al suelo.", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=deadbug" }
+    ]},
+    { id: 203, title: "Día 3: Glúteo Unilateral", focus: "Hipertrofia", warmupType: "warmupLower", isCircuit: false, exercises: [
+      { name: "Zancada Búlgara", s: 3, r: "10", tip: "Torso adelante.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=zancada+bulgara" },
+      { name: "Prensa (Pies altos)", s: 3, r: "12", tip: "Con talones.", mus: "Piernas", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+pies+altos" },
+      { name: "Extensión Cuádriceps", s: 3, r: "10 Fallo", tip: "Stop arriba.", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1574673139055-520448d31705?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extension+cuadriceps" },
+      { name: "Step-Up (Cajón)", s: 3, r: "10", tip: "Sin impulso.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1597452485669-2c7bb5fef90d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=step+up+gluteo" },
+      { name: "Patada Glúteo Polea", s: 3, r: "15", tip: "Bombeo final.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=patada+gluteo" }
+    ]},
+    { id: 204, title: "Día 4: Tren Superior", focus: "Estabilidad", warmupType: "warmupUpper", isCircuit: false, exercises: [
+      { name: "Press Militar Sentado", s: 3, r: "12", tip: "Espalda neutra.", mus: "Hombros", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar+sentado" },
+      { name: "Press Pecho Máquina", s: 3, r: "12", tip: "Control total.", mus: "Pecho", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+pecho+maquina" },
+      { name: "Monster Walk", s: 3, r: "20", tip: "Con banda.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=monster+walk" }
     ]}
   ]} },
   sebas: { username: "sebas", password: "6100", name: "Sebas Coach", color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: [
