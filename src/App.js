@@ -136,19 +136,102 @@ const generatePDFReport = (client, days) => {
 };
 
 // ==========================================
-// DATOS INICIALES
+// DATOS INICIALES - EJERCICIOS
 // ==========================================
+const GRUPOS_MUSCULARES = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Piernas', 'Glúteo', 'Core', 'Cuádriceps', 'Isquios'];
+
 const EJERCICIOS_PREDEFINIDOS = [
-  { name: "Hip Thrust", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=zsRrjH2z0N8" },
-  { name: "Peso Muerto Rumano", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=jEy_czNkF2o" },
-  { name: "Sentadilla", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=Fzc5vKsU5gE" },
-  { name: "Prensa de Piernas", mus: "Piernas", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=IZxyjW7MPJQ" },
-  { name: "Leg Curl", mus: "Isquios", img: "https://images.unsplash.com/photo-1598971457747-9b61f4981e91?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=1Gc-ugJHBEE" },
-  { name: "Extensión de Cuádriceps", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=YEvct2Bp8qo" },
-  { name: "Press de Banca", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=FjKLBRXIgDo" },
-  { name: "Remo", mus: "Espalda", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=p2h0N-5nUDU" },
-  { name: "Dominadas", mus: "Espalda", img: "https://images.unsplash.com/photo-1597124514420-c6391dd34e97?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=eXRwVYt9specifically" },
-  { name: "Curl de Bíceps", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8ZW58MHx8fHx8fDA%3D%3D&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/watch?v=ykJmrZ5v0Oo" },
+  // PECHO
+  { name: "Press de Banca", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+de+banca" },
+  { name: "Flexiones", mus: "Pecho", img: "https://images.unsplash.com/photo-1608805622529-4f3cec3d7c5a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=flexiones+perfectas" },
+  { name: "Cruce de Poleas", mus: "Pecho", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=cruce+poleas" },
+  { name: "Floor Press (Suelo)", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=floor+press" },
+  { name: "Press Inclinado", mus: "Pecho", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado" },
+  
+  // ESPALDA
+  { name: "Remo", mus: "Espalda", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+tecnica" },
+  { name: "Remo con goma", mus: "Espalda", img: "https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+banda+elastica" },
+  { name: "Dominadas", mus: "Espalda", img: "https://images.unsplash.com/photo-1597124514420-c6391dd34e97?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=dominadas+tecnica" },
+  { name: "Pull-over", mus: "Espalda", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=pullover" },
+  { name: "Jalón al Pecho", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+al+pecho" },
+  
+  // HOMBROS
+  { name: "Press Militar", mus: "Hombros", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar" },
+  { name: "Abducción Hombro", mus: "Hombros", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+hombro" },
+  { name: "Elevaciones Laterales", mus: "Hombros", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevaciones+laterales" },
+  { name: "Face Pulls", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=face+pulls" },
+  { name: "Retracción Escapular", mus: "Hombros", img: "https://images.unsplash.com/photo-1549576528-b0f2f33aafc5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=retraccion+escapular" },
+  
+  // BRAZOS
+  { name: "Curl de Bíceps", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+biceps" },
+  { name: "Extensiones Tríceps", mus: "Brazos", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extensiones+triceps" },
+  { name: "Curl Martillo", mus: "Brazos", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+martillo" },
+  { name: "Fondos en Banco", mus: "Brazos", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=fondos+en+banco" },
+  
+  // PIERNAS
+  { name: "Sentadilla Normal", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+tecnica" },
+  { name: "Prensa de Piernas", mus: "Piernas", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+piernas" },
+  { name: "Box Squat (Silla)", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=box+squat" },
+  { name: "Sentadilla Búlgara", mus: "Piernas", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+bulgara" },
+  { name: "Zancada", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=zancada" },
+  
+  // GLÚTEO
+  { name: "Hip Thrust", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust" },
+  { name: "Glute Bridge", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=glute+bridge" },
+  { name: "Patada de Glúteo", mus: "Glúteo", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=patada+gluteo" },
+  { name: "Abducción Máquina", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+gluteo" },
+  
+  // CORE
+  { name: "Plank (Plancha)", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=plank+perfecto" },
+  { name: "Crunch", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=crunch" },
+  { name: "Deadbug (Bicho Muerto)", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=deadbug" },
+  { name: "Rueda Abdominal", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rueda+abdominal" },
+  
+  // CUÁDRICEPS
+  { name: "Extensión Cuádriceps", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extension+cuadriceps" },
+  { name: "Leg Press", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=leg+press" },
+  
+  // ISQUIOS
+  { name: "Peso Muerto Rumano", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano" },
+  { name: "Leg Curl", mus: "Isquios", img: "https://images.unsplash.com/photo-1598971457747-9b61f4981e91?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=leg+curl" },
+  { name: "Curl Femoral Sentado", mus: "Isquios", img: "https://images.unsplash.com/photo-1598971457747-9b61f4981e91?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral" },
+];
+
+const ATHLOS_FORGE_EXERCISES = [
+  // CALENTAMIENTO Y ACTIVACIÓN
+  { name: "Cat-Cow (Gato-Camello)", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/results?search_query=cat+cow+yoga", coaching: "10 reps muy lentas" },
+  { name: "Bird-Dog (Pajaro-Perro)", mus: "Core", img: "https://images.unsplash.com/photo-1609899753861-25c1a3a74324?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/results?search_query=bird+dog+exercise", coaching: "3 series x 10 reps alternas" },
+  { name: "Glute Bridge (Puente de gluteo)", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/results?search_query=glute+bridge", coaching: "2 series x 12 reps (sin peso)" },
+  // TABLA PRINCIPAL
+  { name: "Box Squat (Silla)", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=box+squat+form", coaching: "Bajar lento, tocar silla y subir" },
+  { name: "Remo con goma", mus: "Espalda", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+banda+elastica", coaching: "Sentada/Pie. Juntar escapulas atras" },
+  { name: "Floor Press (Suelo)", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=floor+press+dumbbells", coaching: "Mancuernas. Protege hombro operado" },
+  { name: "P. Muerto Rumano", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano", coaching: "Mancuernas ligeras. Espalda recta" },
+  { name: "Deadbug (Bicho Muerto)", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=deadbug+core", coaching: "Espalda baja pegada al suelo" },
+  // PECHO
+  { name: "Press Inclinado Mancuernas", mus: "Pecho", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado+mancuernas", coaching: "RIR 1. Más seguro para hombro" },
+  { name: "Press Pecho Máquina Convergente", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+maquina+pecho", coaching: "RIR 0 en última serie" },
+  { name: "Cruce Poleas Pecho", mus: "Pecho", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=cruce+poleas+pecho", coaching: "Abajo-Arriba. Máximo bombeo" },
+  // ESPALDA
+  { name: "Dominadas", mus: "Espalda", img: "https://images.unsplash.com/photo-1597124514420-c6391dd34e97?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=dominadas+tecnica", coaching: "Control en bajada. RIR 1" },
+  { name: "Remo Polea Baja Neutro", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea+baja", coaching: "Contrae escápulas atrás" },
+  { name: "Pull-over Polea Alta", mus: "Espalda", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=pullover+polea", coaching: "Cuerda. Máximo estiramiento" },
+  // HOMBROS
+  { name: "Press Militar Sentado", mus: "Hombros", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar+sentado", coaching: "Espalda apoyada. Control" },
+  { name: "Elevaciones Laterales", mus: "Hombros", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevaciones+laterales", coaching: "Brazo atrás de espalda" },
+  { name: "Face Pulls", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=face+pulls", coaching: "Salud hombro. Squeeze posterior" },
+  // BRAZOS
+  { name: "Curl de Bíceps Barra Z", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+barra+z", coaching: "Sin balanceos. Control" },
+  { name: "Extensiones Tríceps Polea", mus: "Brazos", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extensiones+triceps+polea", coaching: "Cuerda. Contracción máxima" },
+  // PIERNAS
+  { name: "Prensa de Piernas", mus: "Piernas", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+piernas", coaching: "Rango completo. Dropset final" },
+  { name: "Extensión Cuádriceps", mus: "Piernas", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extension+cuadriceps", coaching: "Pausa en contracción" },
+  { name: "Curl Femoral Sentado", mus: "Piernas", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral", coaching: "Aguanta 2s contracción" },
+  // GLÚTEO
+  { name: "Hip Thrust Pesado", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust", coaching: "Pausa 2s arriba. Máxima carga" },
+  { name: "Abducción Máquina", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+gluteo", coaching: "Rango completo. Control" },
+  // CORE
+  { name: "Plank (Plancha)", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=plank+perfecto", coaching: "Cuerpo recto. Glúteo contraído" },
 ];
 
 const RUTINA_TAMARA_OFICIAL = [
@@ -247,6 +330,30 @@ const INITIAL_DB = {
       { name: "Burpees", s: 3, r: "15", tip: "Ritmo constante.", mus: "Full Body", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
       { name: "Plancha", s: 3, r: "45s", tip: "Cuerpo recto.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=JB2oyqG50KI" }
     ]}
+  ]} },
+  blanca: { username: "blanca", password: "1234", name: "Blanca Aguero", color: "from-purple-600 to-pink-500", subtitle: "PLAN DE ENTRENAMIENTO - BLANCA AGUERO (V2)", advice: "Respiración: No bloquees aire. Exhala al subir. Hombro: Sube sin dolor. Explosividad: Bajada controlada, subida rápida. Seguridad: Cerca de pared o silla. Calidad: Si dobla la espalda, serie termina.", logs: {}, notes: [], workoutData: { days: [
+    { id: 501, title: "CALENTAMIENTO Y MOVILIDAD", focus: "Preparación (10 min)", warmupType: "warmupAthlos", exercises: [
+      { name: "Cat-Cow", s: 1, r: "10", tip: "Lentas. Movilidad columna", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/results?search_query=cat+cow" },
+      { name: "Retracción Escapular", s: 1, r: "12", tip: "Juntar hombros atrás y abajo", mus: "Hombros", img: "https://images.unsplash.com/photo-1549576528-b0f2f33aafc5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=retraccion+escapular" },
+      { name: "Glute Bridge", s: 2, r: "12", tip: "Activar glúteos para proteger lumbar", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=glute+bridge" },
+      { name: "Movilidad de Hombro", s: 1, r: "15", tip: "Círculos suaves adelante/atrás", mus: "Hombros", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=movilidad+hombro" }
+    ]},
+    { id: 502, title: "TABLA FULL BODY - FUERZA Y PROTECCION (DIA 1-2)", focus: "Salud, Masa Muscular y Espalda Protegida", warmupType: "warmupAthlos", exercises: [
+      { name: "Sentadilla Normal", s: 3, r: "10-12", tip: "Bajar lento, pausa 1s abajo, subida explosiva", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+tecnica" },
+      { name: "Remo con goma", s: 3, r: "12", tip: "Codos pegados. Aprieta espalda", mus: "Espalda", img: "https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+banda" },
+      { name: "Floor Press (Suelo)", s: 3, r: "10-12", tip: "Mancuernas. Codos tocan suelo y suben", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=floor+press" },
+      { name: "P. Muerto Rumano", s: 3, r: "10", tip: "Bisagra de cadera. Espalda recta", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano" },
+      { name: "Abducción Hombro", s: 3, r: "12", tip: "Codo 90 grados. Eleva hasta hombro", mus: "Hombros", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+hombro" },
+      { name: "Deadbug (Bicho)", s: 3, r: "45s", tip: "Abdomen duro. Espalda baja al suelo", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=deadbug" }
+    ]},
+    { id: 503, title: "TABLA ALT - HIPERTROFIA Y ESTABILIDAD (DIA 3)", focus: "Complementario", warmupType: "warmupAthlos", exercises: [
+      { name: "Hip Thrust", s: 3, r: "12", tip: "Pausa 1s arriba. Glúteo máximo", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust" },
+      { name: "Remo Polea Baja", s: 3, r: "12", tip: "Contrae escápulas atrás", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea" },
+      { name: "Flexiones", s: 3, r: "8-10", tip: "Cuerpo recto. Control", mus: "Pecho", img: "https://images.unsplash.com/photo-1608805622529-4f3cec3d7c5a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=flexiones+perfectas" },
+      { name: "Extensión Cuádriceps", s: 3, r: "12", tip: "Pausa en contracción", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extension+cuadriceps" },
+      { name: "Face Pulls", s: 3, r: "15", tip: "Salud hombro. Squeeze posterior", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=face+pulls" },
+      { name: "Plank (Plancha)", s: 3, r: "45s", tip: "Cuerpo recto. Glúteo contraído", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=plank" }
+    ]}
   ]} }
 };
 
@@ -320,7 +427,7 @@ const ProgressBar = ({ label, current, previous, color = "#f59e0b" }) => {
       </div>
       <div className="relative h-6 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
         <div style={{ width: `${prevPercent}%` }} className="absolute h-full bg-zinc-600 opacity-40"></div>
-        <div style={{ width: `${currentPercent}%` }} className="absolute h-full transition-all" style={{ backgroundColor: color }}></div>
+        <div style={{ width: `${currentPercent}%`, backgroundColor: color }} className="absolute h-full transition-all"></div>
         <div className="relative h-full flex items-center px-2">
           <span className="text-white text-[9px] font-black">{current}kg</span>
         </div>
@@ -407,7 +514,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
   return (
     <div className={`${isAdmin ? "bg-zinc-900 border-zinc-800" : "bg-white border-gray-100"} rounded-[2.5rem] border shadow-sm overflow-hidden mb-6`}>
       <div className="relative h-52 bg-zinc-800 group">
-        <img src={ex?.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-full h-full object-cover" loading="lazy" />
+        <img src={ex?.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
         {isAdmin && <button onClick={() => fileRef.current.click()} className="absolute top-4 left-4 bg-black/60 p-2 rounded-xl text-white"><Camera size={18} /><input type="file" ref={fileRef} className="hidden" onChange={e => {
              const file = e.target.files[0];
@@ -525,6 +632,7 @@ export default function App() {
   const [editingClientId, setEditingClientId] = useState(null);
   const [editingDayId, setEditingDayId] = useState(null);
   const [selectedExerciseTemplate, setSelectedExerciseTemplate] = useState("");
+  const [selectedMusculoGroup, setSelectedMusculoGroup] = useState("");
   const [newEx, setNewEx] = useState({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
   const [newDay, setNewDay] = useState({ title: "", focus: "", warmupType: "warmupLower" });
   const [showAddClientModal, setShowAddClientModal] = useState(false);
@@ -645,6 +753,7 @@ export default function App() {
   useEffect(() => {
     setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
     setSelectedExerciseTemplate("");
+    setSelectedMusculoGroup("");
   }, [editingDayId]);
 
   useEffect(() => {
@@ -803,12 +912,18 @@ export default function App() {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const selectExerciseTemplate = (exName) => {
-    const template = EJERCICIOS_PREDEFINIDOS.find(e => e.name === exName);
+  const selectExerciseTemplate = (exName, fromAthlos = false) => {
+    const source = fromAthlos ? ATHLOS_FORGE_EXERCISES : EJERCICIOS_PREDEFINIDOS;
+    const template = source.find(e => e.name === exName);
     if (template) {
-      setNewEx({ name: template.name, s: 3, r: "12", tip: "", mus: template.mus, yt: template.yt, img: template.img });
+      const tip = template.coaching || template.tip || "";
+      setNewEx({ name: template.name, s: 3, r: "12", tip: tip, mus: template.mus, yt: template.yt, img: template.img });
       setSelectedExerciseTemplate(exName);
     }
+  };
+  
+  const getExercisesByMuscleGroup = (group, source = EJERCICIOS_PREDEFINIDOS) => {
+    return source.filter(e => e.mus === group).sort((a, b) => a.name.localeCompare(b.name));
   };
 
   const removeClientAccount = async () => {
@@ -1036,7 +1151,12 @@ export default function App() {
     );
   }
 
-  if (!dataLoaded || !db[currentClientId]) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-amber-500"><Loader2 className="animate-spin" size={40} /></div>;
+  if (!dataLoaded || !db[currentClientId]) return (
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-white">
+      <Loader2 className="animate-spin text-amber-500 mb-4" size={40} />
+      <p className="text-sm text-zinc-400">Cargando datos...</p>
+    </div>
+  );
 
   const client = db[currentClientId];
   const workoutLogs = client.logs || {};
@@ -1213,14 +1333,33 @@ export default function App() {
                                   <h5 className="text-[10px] font-black uppercase text-zinc-400">Nuevo Ejercicio</h5>
                                   <div className="space-y-3">
                                     <label className="text-[9px] text-zinc-500 font-bold block">Selecciona de predefinidos:</label>
-                                    <select value={selectedExerciseTemplate} onChange={e => selectExerciseTemplate(e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700">
-                                      <option value="">-- Escoge un ejercicio --</option>
-                                      {EJERCICIOS_PREDEFINIDOS.map(ex => <option key={ex.name} value={ex.name}>{ex.name} ({ex.mus})</option>)}
-                                    </select>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button onClick={() => setSelectedMusculoGroup('')} className={`text-[9px] font-bold p-2 rounded border transition-all ${selectedMusculoGroup === '' ? 'bg-amber-500 text-black border-amber-600' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>Estándar</button>
+                                      <button onClick={() => { setSelectedMusculoGroup('ATHLOS'); setSelectedExerciseTemplate(""); }} className={`text-[9px] font-bold p-2 rounded border transition-all ${selectedMusculoGroup === 'ATHLOS' ? 'bg-green-600 text-white border-green-700' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>🔥 ATHLOS</button>
+                                    </div>
+                                    {selectedMusculoGroup !== 'ATHLOS' ? (
+                                      <>
+                                        <select value={selectedMusculoGroup} onChange={e => { setSelectedMusculoGroup(e.target.value); setSelectedExerciseTemplate(""); }} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700">
+                                          <option value="">-- Elige grupo muscular --</option>
+                                          {GRUPOS_MUSCULARES.map(g => <option key={g} value={g}>{g}</option>)}
+                                        </select>
+                                        {selectedMusculoGroup && (
+                                          <select value={selectedExerciseTemplate} onChange={e => selectExerciseTemplate(e.target.value, false)} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700">
+                                            <option value="">-- Escoge ejercicio --</option>
+                                            {getExercisesByMuscleGroup(selectedMusculoGroup, EJERCICIOS_PREDEFINIDOS).map(ex => <option key={ex.name} value={ex.name}>{ex.name}</option>)}
+                                          </select>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <select value={selectedExerciseTemplate} onChange={e => { selectExerciseTemplate(e.target.value, true); }} className="w-full bg-green-900 p-2 rounded text-white text-xs outline-none border border-green-700">
+                                        <option value="">-- Escoge ejercicio ATHLOS --</option>
+                                        {ATHLOS_FORGE_EXERCISES.map(ex => <option key={ex.name} value={ex.name}>{ex.name} ({ex.mus})</option>)}
+                                      </select>
+                                    )}
                                   </div>
                                   {newEx.img && (
                                     <div className="text-center">
-                                      <img src={newEx.img} alt={newEx.name} className="w-full h-24 object-cover rounded-lg" />
+                                      <img src={newEx.img} alt={newEx.name} className="w-full h-24 object-cover rounded-lg" loading="lazy" decoding="async" />
                                     </div>
                                   )}
                                   <input key={`newex-name-${editingDayId}`} type="text" placeholder="Nombre..." maxLength="50" className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} />
