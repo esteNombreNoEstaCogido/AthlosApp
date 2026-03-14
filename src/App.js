@@ -11,6 +11,13 @@ import {
 import {
   generateToken, verifyToken, storeToken, getStoredToken, clearToken, getCurrentUserId
 } from "./security/tokenManager";
+// NEW: UI components
+import { AthlosBrandHeader } from "./components/AthlosBrandHeader";
+import { ColorPalettePicker } from "./components/ColorPalettePicker";
+import { BackButtonExitHandler } from "./components/BackButtonExitHandler";
+import { Toast, useToast } from "./components/Toast";
+import { AdminMotivationalManager } from "./components/AdminMotivationalManager";
+import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
 import { 
@@ -603,6 +610,12 @@ export default function App() {
   const [loginLockedUntil, setLoginLockedUntil] = useState(null);
   const [keepLoggedIn, setKeepLoggedIn] = useState(true);
 
+  // NEW: Color palette and motivational phrases
+  const [preferredPaletteId, setPreferredPaletteId] = useState('premium-dark');
+  const [dailyMotivationalPhrase, setDailyMotivationalPhrase] = useState('La consistencia es la clave del éxito 💪');
+  const [allMotivationalPhrases, setAllMotivationalPhrases] = useState([]);
+  const { toasts, showSuccess, showError } = useToast();
+
   const [activeTab, setActiveTab] = useState("home");
   const [currentClientId, setCurrentClientId] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -715,6 +728,59 @@ export default function App() {
     });
   }, []);
 
+  // NEW: Save color palette preference to user's profile
+  const saveUserColorPreference = useCallback((userId, paletteId) => {
+    updateUserInCloud(userId, u => ({
+      ...u,
+      preferredPaletteId: paletteId
+    }));
+    localStorage.setItem(`athlos_palette_${userId}`, paletteId);
+  }, [updateUserInCloud]);
+
+  // NEW: Load user's color preference
+  const loadUserColorPreference = useCallback((userId) => {
+    const saved = localStorage.getItem(`athlos_palette_${userId}`);
+    if (saved) {
+      setPreferredPaletteId(saved);
+    } else if (db[userId]?.preferredPaletteId) {
+      setPreferredPaletteId(db[userId].preferredPaletteId);
+      localStorage.setItem(`athlos_palette_${userId}`, db[userId].preferredPaletteId);
+    }
+  }, [db]);
+
+  // NEW: Save motivational phrase (admin only)
+  const saveMotivationalPhrase = useCallback((phraseData) => {
+    const newPhrase = {
+      text: typeof phraseData === 'string' ? phraseData : (phraseData?.text || String(phraseData)),
+      timestamp: new Date().toISOString(),
+      active: true
+    };
+    
+    const updated = [newPhrase, ...allMotivationalPhrases].slice(0, 20);
+    setAllMotivationalPhrases(updated);
+    setDailyMotivationalPhrase(newPhrase.text);
+    
+    // Save to localStorage and cloud
+    localStorage.setItem('athlos_motivational_phrases', JSON.stringify(updated));
+    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+      updateUserInCloud(loggedInUser, u => ({
+        ...u,
+        motivationalPhrases: updated,
+        currentMotivationalPhrase: newPhrase.text
+      }));
+    }
+    
+    showSuccess('Frase motivadora guardada ✨');
+  }, [allMotivationalPhrases, loggedInUser, updateUserInCloud, showSuccess]);
+
+  // NEW: Delete motivational phrase
+  const deleteMotivationalPhrase = useCallback((idx) => {
+    const updated = allMotivationalPhrases.filter((_, i) => i !== idx);
+    setAllMotivationalPhrases(updated);
+    localStorage.setItem('athlos_motivational_phrases', JSON.stringify(updated));
+    showSuccess('Frase eliminada');
+  }, [allMotivationalPhrases, showSuccess]);
+
   // Liberar bloqueo de login cuando expira
   useEffect(() => {
     if (!loginLockedUntil) return;
@@ -784,6 +850,27 @@ export default function App() {
     if (loggedInUser && db[loggedInUser]) {
       setCurrentClientId(loggedInUser);
       setIsAdminMode(loggedInUser === 'entrenador' || loggedInUser === 'coach');
+      
+      // NEW: Load user's color preference
+      const saved = localStorage.getItem(`athlos_palette_${loggedInUser}`);
+      if (saved) {
+        setPreferredPaletteId(saved);
+      } else if (db[loggedInUser]?.preferredPaletteId) {
+        setPreferredPaletteId(db[loggedInUser].preferredPaletteId);
+      }
+      
+      // NEW: Load motivational phrases
+      const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
+      if (savedPhrases) {
+        const phrases = JSON.parse(savedPhrases);
+        setAllMotivationalPhrases(phrases);
+        if (phrases.length > 0) {
+          setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
+        }
+      } else if (db[loggedInUser]?.motivationalPhrases) {
+        setAllMotivationalPhrases(db[loggedInUser].motivationalPhrases);
+        setDailyMotivationalPhrase(db[loggedInUser].currentMotivationalPhrase || 'La consistencia es la clave del éxito 💪');
+      }
     }
   }, [loggedInUser, db]);
 
@@ -1271,6 +1358,20 @@ export default function App() {
 
         {activeTab === "home" && (
           <div className="space-y-8 animate-in fade-in duration-500">
+            {/* NEW: Back Button Exit Handler */}
+            <BackButtonExitHandler 
+              isEnabled={!isAdminMode}
+              onExit={() => signOutUser()}
+            />
+            
+            {/* NEW: Athlos Premium Brand Header with Logo & Daily Phrase */}
+            <AthlosBrandHeader 
+              dailyPhrase={dailyMotivationalPhrase}
+              colorPalette={getPaletteById(preferredPaletteId)}
+              isAdmin={isAdminMode}
+              onAdminEditPhrase={saveMotivationalPhrase}
+            />
+            
             <div className={`bg-gradient-to-br ${isAdminMode && !isEditingClientRoutine ? "from-zinc-800 to-zinc-900 border border-zinc-700" : String(client.color || "from-blue-600 to-indigo-500")} p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden`}>
               <div className="flex flex-col gap-1 relative z-10">
                  {isAdminMode && !isEditingClientRoutine ? (
@@ -1487,6 +1588,32 @@ export default function App() {
               ))}
             </div>
 
+            {/* NEW: Color Palette Picker for personalization */}
+            {!isAdminMode && (
+              <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-8 rounded-[2rem] border border-zinc-700 shadow-xl">
+                <ColorPalettePicker
+                  selectedPaletteId={preferredPaletteId}
+                  onPaletteSelect={(paletteId) => {
+                    setPreferredPaletteId(paletteId);
+                    saveUserColorPreference(loggedInUser, paletteId);
+                    showSuccess('Tema personalizado ✨');
+                  }}
+                  isCompact={false}
+                />
+              </div>
+            )}
+
+            {/* NEW: Admin Motivational Phrase Manager */}
+            {isAdminMode && (
+              <AdminMotivationalManager
+                currentPhrase={dailyMotivationalPhrase}
+                allPhrases={allMotivationalPhrases}
+                onSavePhrase={saveMotivationalPhrase}
+                onDeletePhrase={deleteMotivationalPhrase}
+                colorPalette={getPaletteById(preferredPaletteId)}
+              />
+            )}
+
             <div className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-amber-50 border-amber-100 text-zinc-900"} p-6 rounded-[2rem] border shadow-sm`}>
                <h3 className="text-[10px] font-black uppercase text-amber-600 mb-2 flex items-center gap-2"><LayoutDashboard size={14}/> Mensaje Coach</h3>
                <p className="text-sm italic font-medium leading-relaxed">"{String(client.advice || "")}"</p>
@@ -1627,6 +1754,19 @@ export default function App() {
       )}
 
       {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className="bg-green-600 text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20"><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{String(toast.message)}</span></div></div>)}
+
+      {/* NEW: Toast notification container */}
+      <div className="fixed bottom-24 right-4 z-40 space-y-2">
+        {toasts.map((toast, idx) => (
+          <Toast
+            key={idx}
+            message={toast.message}
+            type={toast.type}
+            duration={toast.duration}
+            onClose={toast.onClose}
+          />
+        ))}
+      </div>
     </div>
   );
 }

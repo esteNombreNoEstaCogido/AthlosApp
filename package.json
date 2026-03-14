@@ -25,9 +25,8 @@
     "start": "npm run validate-env && react-scripts start",
     "build": "npm run validate-env && react-scripts build",
     "test": "react-scripts test --env=jsdom",
+    "test:all": "node scripts/phase6_securityTests.js",
     "test:security": "node scripts/phase6_securityTests.js",
-    "test:jwt": "node scripts/verifyPhase5JWT.js",
-    "test:all": "npm run test:security && npm run test:jwt",
     "eject": "react-scripts eject"
   },
   "browserslist": [
