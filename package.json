@@ -21,9 +21,13 @@
     "typescript": "5.7.2"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "validate-env": "node scripts/validateEnv.js",
+    "start": "npm run validate-env && react-scripts start",
+    "build": "npm run validate-env && react-scripts build",
     "test": "react-scripts test --env=jsdom",
+    "test:security": "node scripts/phase6_securityTests.js",
+    "test:jwt": "node scripts/verifyPhase5JWT.js",
+    "test:all": "npm run test:security && npm run test:jwt",
     "eject": "react-scripts eject"
   },
   "browserslist": [

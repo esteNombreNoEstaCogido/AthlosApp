@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useCallback, memo, useRef } from "react";
 import html2pdf from "html2pdf.js";
-import bcrypt from "bcryptjs";
+import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager";
+import { 
+  sanitizeInput, sanitizeUrl, sanitizeName, validateUserData, validateWorkoutLogData 
+} from "./security/sanitization";
+import {
+  safeParseWeight, safeParseReps, safeParseSerries,
+  validateWorkoutLogData as validateLogAJV
+} from "./security/validationSchemas";
+import {
+  generateToken, verifyToken, storeToken, getStoredToken, clearToken, getCurrentUserId
+} from "./security/tokenManager";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
 import { 
@@ -33,26 +43,9 @@ const COLLECTION_NAME = "athlos_clients";
 // ==========================================
 // UTILIDADES BLINDADAS
 // ==========================================
-const sanitizeInput = (str) => {
-  if (typeof str !== 'string') return '';
-  return str.slice(0, 200).replace(/[<>\"'&]/g, c => ({
-    '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;'
-  }[c]));
-};
-
-const sanitizeUrl = (url) => {
-  if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('data:')) return '';
-  try { new URL(trimmed); return trimmed; } catch { return ''; }
-};
-
-const safeJSONParse = (key, fallback) => {
-  try {
-    const item = localStorage.getItem(key);
-    return item && item !== "undefined" ? JSON.parse(item) : fallback;
-  } catch (e) { return fallback; }
-};
+// ✅ sanitizeInput, sanitizeUrl imported from src/security/sanitization.js
+// Uses HTML entity escaping for XSS prevention
+// Blocks data: URIs in URLs (prevents XSS via data URLs)
 
 const getSavedSession = () => {
   try {
@@ -83,16 +76,8 @@ const callGeminiAPI = async (prompt) => {
 // ==========================================
 // SEGURIDAD & UTILITIES
 // ==========================================
-const hashPassword = (password) => {
-  // Usar salt simple para evitar problemas con bcrypt en client-side
-  const salt = "athlos_salt_2025";
-  return btoa(salt + password).slice(0, 50); // Encoding simple, no es criptografía real
-};
-
-const validatePassword = (password) => {
-  // Al menos 6 caracteres, sin espacios
-  return password && password.length >= 6 && !/\s/.test(password);
-};
+// ✅ Secure password functions imported from passwordManager.js
+// hashPassword, validatePassword are now bcryptjs-backed
 
 const generatePDFReport = (client, days) => {
   const html = `
@@ -258,9 +243,9 @@ const RUTINA_TAMARA_OFICIAL = [
 ];
 
 const INITIAL_DB = {
-  entrenador: { username: "coach", password: "1234", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
-  tamara: { username: "tamara", password: "1234", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
-  pivon: { username: "pivon", password: "1234", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero y espalda sana", advice: "Técnica perfecta por tu escoliosis.", logs: {}, notes: [], workoutData: { days: [
+  entrenador: { username: "coach", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
+  tamara: { username: "tamara", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
+  pivon: { username: "pivon", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero y espalda sana", advice: "Técnica perfecta por tu escoliosis.", logs: {}, notes: [], workoutData: { days: [
     { id: 201, title: "Día 1: Glúteos e Isquios", focus: "Fuerza", warmupType: "warmupLower", isCircuit: false, exercises: [
       { name: "Hip Thrust", s: 4, r: "6-8", tip: "Bajada 3s.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=tecnica+hip+thrust" },
       { name: "Peso Muerto Rumano", s: 3, r: "10-12", tip: "Barra pegada.", mus: "Isquios", img: "https://images.unsplash.com/photo-1594737625785-a2bad9931c60?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano" },
@@ -286,7 +271,7 @@ const INITIAL_DB = {
       { name: "Monster Walk", s: 3, r: "20", tip: "Con banda.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=monster+walk" }
     ]}
   ]} },
-  sebas: { username: "sebas", password: "6100", name: "Sebas Coach", color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: [
+  sebas: { username: "sebas", password: "$2b$12$TCfcu2SZmVZKwRsqJl5rx.UTqoNSbFMQw86DYvi2TzKIN8xYuRPgC", name: "Sebas Coach", color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: [
     { id: 11, title: "LUNES: PUSH", focus: "Pectoral Superior + Tríceps", warmupType: "warmupUpper", isCircuit: false, exercises: [
       { name: "Press Inclinado Mancuernas", s: 3, r: "8-10", tip: "RIR 1. Más seguro para el hombro.", mus: "Pecho Sup", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado+mancuernas+tecnica" },
       { name: "Press Pecho Máquina Convergente", s: 3, r: "10-12", tip: "RIR 0 en la última serie.", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+maquina+convergente+pecho" },
@@ -319,19 +304,19 @@ const INITIAL_DB = {
       { name: "Rueda Abdominal", s: 4, r: "Fallo", tip: "Control lumbar.", mus: "Abdomen", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rueda+abdominal+tecnica" }
     ]}
   ]} },
-  sebas2: { username: "sebas2", password: "1234", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [
+  sebas2: { username: "sebas2", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [
     { id: 404, title: "Lower Strength", focus: "Fuerza", warmupType: "warmupLower", exercises: [
       { name: "Sentadilla Pesada", s: 5, r: "5", tip: "Máxima carga.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
       { name: "Peso Muerto", s: 3, r: "5", tip: "Carga máxima.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" }
     ]}
   ]} },
-  claudia: { username: "claudia", password: "1234", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Nuevo Plan", advice: "Dale todo.", logs: {}, notes: [], workoutData: { days: [
+  claudia: { username: "claudia", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Nuevo Plan", advice: "Dale todo.", logs: {}, notes: [], workoutData: { days: [
     { id: 405, title: "Cardio & Core", focus: "Resistencia", warmupType: "warmupAthlos", exercises: [
       { name: "Burpees", s: 3, r: "15", tip: "Ritmo constante.", mus: "Full Body", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
       { name: "Plancha", s: 3, r: "45s", tip: "Cuerpo recto.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=JB2oyqG50KI" }
     ]}
   ]} },
-  blanca: { username: "blanca", password: "1234", name: "Blanca Aguero", color: "from-purple-600 to-pink-500", subtitle: "PLAN DE ENTRENAMIENTO - BLANCA AGUERO (V2)", advice: "Respiración: No bloquees aire. Exhala al subir. Hombro: Sube sin dolor. Explosividad: Bajada controlada, subida rápida. Seguridad: Cerca de pared o silla. Calidad: Si dobla la espalda, serie termina.", logs: {}, notes: [], workoutData: { days: [
+  blanca: { username: "blanca", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Blanca Aguero", color: "from-purple-600 to-pink-500", subtitle: "PLAN DE ENTRENAMIENTO - BLANCA AGUERO (V2)", advice: "Respiración: No bloquees aire. Exhala al subir. Hombro: Sube sin dolor. Explosividad: Bajada controlada, subida rápida. Seguridad: Cerca de pared o silla. Calidad: Si dobla la espalda, serie termina.", logs: {}, notes: [], workoutData: { days: [
     { id: 501, title: "CALENTAMIENTO Y MOVILIDAD", focus: "Preparación (10 min)", warmupType: "warmupAthlos", exercises: [
       { name: "Cat-Cow", s: 1, r: "10", tip: "Lentas. Movilidad columna", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/results?search_query=cat+cow" },
       { name: "Retracción Escapular", s: 1, r: "12", tip: "Juntar hombros atrás y abajo", mus: "Hombros", img: "https://images.unsplash.com/photo-1549576528-b0f2f33aafc5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=retraccion+escapular" },
@@ -610,7 +595,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  const [loggedInUser, setLoggedInUser] = useState(() => getSavedSession());
+  const [loggedInUser, setLoggedInUser] = useState(null);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -667,6 +652,45 @@ export default function App() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
+  }, []);
+
+  // ✅ Restore session from JWT token on app load (Phase 5 - Session Management)
+  useEffect(() => {
+    const restoreSessionFromJWT = async () => {
+      const { getStoredToken, verifyToken, getCurrentUserId } = tokenManager;
+      const token = getStoredToken();
+      
+      if (!token) {
+        // No token found, session is not authenticated
+        setLoggedInUser(null);
+        setDataLoaded(true);
+        return;
+      }
+      
+      const { valid, decoded } = verifyToken(token);
+      if (!valid) {
+        // Token is invalid or expired, clear it and logout
+        console.warn("🚨 JWT token invalid or expired - clearing session");
+        tokenManager.clearToken();
+        setLoggedInUser(null);
+        setDataLoaded(true);
+        return;
+      }
+      
+      // Extract userId from JWT token subject claim
+      const userId = decoded?.sub;
+      if (userId) {
+        console.log("✅ Session restored from JWT:", userId);
+        setLoggedInUser(userId);
+      } else {
+        console.warn("🚨 JWT token valid but no userId found");
+        setLoggedInUser(null);
+      }
+      
+      setDataLoaded(true);
+    };
+    
+    restoreSessionFromJWT();
   }, []);
 
   const updateUserInCloud = useCallback((userId, modifierFn) => {
@@ -791,25 +815,31 @@ export default function App() {
     const input = loginUser.toLowerCase().trim();
     if (!input) return;
     try {
-      if (input === "coach" && loginPass === "1234") {
-        setLoginAttempts(0);
-        setLoginLockedUntil(null);
-        setLoggedInUser("entrenador"); setCurrentClientId("entrenador"); setIsAdminMode(true);
-        if (keepLoggedIn) localStorage.setItem("athlos_session_final", JSON.stringify("entrenador"));
-        else sessionStorage.setItem("athlos_session_final", JSON.stringify("entrenador"));
-        return;
-      }
       let user = db[input] || INITIAL_DB[input];
       if (navigator.onLine && !user) {
          const snap = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
          if (snap.exists()) user = snap.data();
       }
-      if (user && user.password === loginPass) {
+      
+      // 🔐 Secure password verification using bcryptjs
+      if (user && await verifyPassword(loginPass, user.password)) {
         setLoginAttempts(0);
         setLoginLockedUntil(null);
-        setLoggedInUser(input); setCurrentClientId(input); setIsAdminMode(input === 'entrenador' || input === 'coach');
-        if (keepLoggedIn) localStorage.setItem("athlos_session_final", JSON.stringify(input));
-        else sessionStorage.setItem("athlos_session_final", JSON.stringify(input));
+        // Admin if username is 'entrenador' or loaded from DB with admin role
+        const isAdmin = input === 'entrenador';
+        setLoggedInUser(input);
+        setCurrentClientId(input);
+        setIsAdminMode(isAdmin);
+        
+        // 🔐 Generate and store JWT token (24h expiration)
+        try {
+          const token = await generateToken(input, 24); // 24 hour expiration
+          storeToken(token);
+          setLoginError(""); // Clear any error
+        } catch (tokenError) {
+          console.warn("⚠️ Token generation warning:", tokenError.message);
+          // Fallback: still allow login even if token fails
+        }
       } else { 
         const newAttempts = loginAttempts + 1;
         setLoginAttempts(newAttempts);
@@ -820,10 +850,10 @@ export default function App() {
           setLoginError(`Usuario o contraseña incorrectos (${newAttempts}/5)`);
         }
       }
-    } catch (e) { setLoginError("Error de red."); }
+    } catch (e) { setLoginError("Error de red: " + e.message); }
   };
 
-  const changePassword = () => {
+  const changePassword = async () => {
     // Validar contraseña actual
     if (!pwdCurrent || !pwdNew || !pwdConfirm) {
       setPwdError("Todos los campos son obligatorios");
@@ -842,28 +872,44 @@ export default function App() {
       return;
     }
     
-    // Verificar contraseña actual
+    // Verificar contraseña actual 🔐 using bcryptjs
     const currentUser = db[loggedInUser] || INITIAL_DB[loggedInUser];
-    if (!currentUser || currentUser.password !== pwdCurrent) {
+    if (!currentUser) {
+      setPwdError("Usuario no encontrado");
+      return;
+    }
+    
+    const isCurrentValid = await verifyPassword(pwdCurrent, currentUser.password);
+    if (!isCurrentValid) {
       setPwdError("Contraseña actual incorrecta");
       return;
     }
     
-    // Actualizar contraseña
-    updateUserInCloud(loggedInUser, u => ({ ...u, password: pwdNew }));
-    setPwdError("");
-    setPwdSuccess("Contraseña actualizada correctamente ✓");
-    setTimeout(() => {
-      setPwdCurrent("");
-      setPwdNew("");
-      setPwdConfirm("");
-      setPwdSuccess("");
-      setShowPasswordModal(false);
-    }, 2000);
+    // Hash nueva contraseña antes de guardar
+    try {
+      const newHash = await hashPassword(pwdNew);
+      updateUserInCloud(loggedInUser, u => ({ ...u, password: newHash }));
+      setPwdError("");
+      setPwdSuccess("Contraseña actualizada correctamente ✓");
+      setTimeout(() => {
+        setPwdCurrent("");
+        setPwdNew("");
+        setPwdConfirm("");
+        setPwdSuccess("");
+        setShowPasswordModal(false);
+      }, 2000);
+    } catch (error) {
+      console.error("Error hashing password:", error);
+      setPwdError("Error al actualizar contraseña. Intenta de nuevo.");
+    }
   };
 
   const signOutUser = () => {
-    setLoggedInUser(null); setIsAdminMode(false); 
+    setLoggedInUser(null); 
+    setIsAdminMode(false); 
+    // 🔐 Clear JWT token instead of plaintext session
+    clearToken();
+    // Keep old session removal for backward compatibility
     localStorage.removeItem("athlos_session_final"); 
     sessionStorage.removeItem("athlos_session_final");
     setDataLoaded(false);
@@ -880,7 +926,22 @@ export default function App() {
       const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; 
       const dIdx = days.findIndex(d => d.id === dayId); 
       if(dIdx > -1 && Array.isArray(days[dIdx].exercises) && days[dIdx].exercises[idx]) { 
-        const sanitized = field === 'yt' ? sanitizeUrl(val) : field === 's' ? parseInt(val) || 3 : sanitizeInput(val); 
+        let sanitized;
+        
+        // 🔐 Validated sanitization based on field type
+        if (field === 'yt') {
+          sanitized = sanitizeUrl(val);
+        } else if (field === 's') {
+          // Series: 1-10 range
+          sanitized = safeParseSerries(val);
+        } else if (field === 'r') {
+          // Reps: validate format (can be "8-10", "12", "Fallo")
+          sanitized = sanitizeInput(val, 50);
+        } else {
+          // Other fields: sanitize as text
+          sanitized = sanitizeInput(val, 200);
+        }
+        
         days[dIdx].exercises[idx] = { ...days[dIdx].exercises[idx], [field]: sanitized }; 
       } 
       return { ...u, workoutData: { ...u.workoutData, days } }; 
@@ -980,10 +1041,31 @@ export default function App() {
   };
 
   const addLogRecord = useCallback((exName, weight, reps) => {
+    // 🔐 VALIDATE input before storing
+    const validatedWeight = safeParseWeight(weight);
+    const validatedReps = safeParseReps(reps);
+    
+    if (validatedWeight === 0 && validatedReps === 0) {
+      setToast({ type: "ERROR", message: "Peso o reps inv√°lidos" });
+      setTimeout(() => setToast(null), 2000);
+      return;
+    }
+    
     const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    const logEntry = { weight: validatedWeight, reps: validatedReps, date: dateStr, id: Date.now() };
+    
+    // Validate log structure with AJV
+    const validation = validateLogAJV(logEntry);
+    if (!validation.valid) {
+      console.warn("⚠️ Log validation failed:", validation.errors);
+      setToast({ type: "ERROR", message: "Datos inv√°lidos" });
+      setTimeout(() => setToast(null), 2000);
+      return;
+    }
+    
     updateUserInCloud(currentClientId, (u) => {
       const logs = u.logs || {};
-      return { ...u, logs: { ...logs, [exName]: [{ weight, reps, date: dateStr, id: Date.now() }, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, 15) } };
+      return { ...u, logs: { ...logs, [exName]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, 15) } };
     });
     setToast({ type: "SUCCESS", message: `Serie registrada` }); setTimeout(() => setToast(null), 2000);
   }, [currentClientId, updateUserInCloud]);
@@ -1001,9 +1083,19 @@ export default function App() {
   }, [currentClientId, updateUserInCloud]);
   
   const addNoteRecord = () => {
-    if (!noteText) return;
+    if (!noteText || !noteText.trim()) return;
+    
+    // 🔐 Sanitize and validate note
+    const sanitized = sanitizeInput(noteText, 500);
+    if (!sanitized.trim()) return;
+    
     const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
-    updateUserInCloud(currentClientId, (u) => ({ ...u, notes: [{ text: noteText, date: dateStr, id: Date.now() }, ...(Array.isArray(u.notes) ? u.notes : [])] }));
+    const noteEntry = { text: sanitized, date: dateStr, id: Date.now() };
+    
+    updateUserInCloud(currentClientId, (u) => ({ 
+      ...u, 
+      notes: [noteEntry, ...(Array.isArray(u.notes) ? u.notes : [])].slice(0, 50) 
+    }));
     setNoteText("");
   };
 

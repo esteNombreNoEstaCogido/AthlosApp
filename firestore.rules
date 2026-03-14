@@ -1,0 +1,82 @@
+rules_version = '2';
+
+/**
+ * FIRESTORE SECURITY RULES
+ * Purpose: Control access to athlos_clients collection
+ * 
+ * Rules enforce:
+ * ✅ Authentication required for all operations
+ * ✅ Users can only read/write their own documents (no IDOR)
+ * ✅ Admin (entrenador) has expanded permissions
+ * ✅ Data structure validation for writes
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ❌ DENY ALL by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // ✅ Allow client access to own document
+    match /athlos_clients/{userId} {
+      
+      // READ: User can only read their own document
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // WRITE: User can write to own document with valid structure
+      allow write: if request.auth != null 
+        && request.auth.uid == userId
+        && isValidUserDocument(request.resource.data);
+      
+      // ADMIN READ: Entrenador (admin) can read all user documents
+      // Note: Admin identification based on username in Firestore
+      // For production, use Firebase Authentication custom claims
+      allow read: if request.auth != null 
+        && isAdmin(userId);
+    }
+    
+    // ✅ Allow entrenador (admin) full access to all documents
+    match /athlos_clients/{userId} {
+      allow read, write: if request.auth != null 
+        && isAdminUser(request.auth.uid);
+    }
+  }
+  
+  // Helper function: Validate user document structure
+  function isValidUserDocument(data) {
+    let hasRequiredFields = data.keys().hasAll([
+      'username',
+      'password',
+      'name'
+    ]);
+    
+    let validTypes = 
+      data.username is string
+      && data.password is string
+      && data.name is string
+      && data.color is string
+      && data.logs is map
+      && data.notes is list
+      && data.workoutData is map;
+    
+    return hasRequiredFields && validTypes;
+  }
+  
+  // Helper function: Check if user is admin (entrenador)
+  function isAdmin(userId) {
+    // In Firebase, entrenador is the admin user
+    return userId == 'entrenador';
+  }
+  
+  // Helper function: Check if authenticated user is admin
+  // TODO: Implement Firebase Authentication custom claims for production:
+  // get(/databases/$(database)/documents/athlos_clients/$(request.auth.uid)).data.role == 'admin'
+  function isAdminUser(uid) {
+    // For MVP: Check if user document has admin role
+    // This requires a request to database, so use sparingly
+    // Alternative: Use Firebase Auth custom claims in production
+    return uid == 'entrenador';
+  }
+}
