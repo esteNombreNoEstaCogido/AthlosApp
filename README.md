@@ -50,6 +50,7 @@ npm run test:jwt       # Run JWT tests (7 tests)
 
 ### 🎨 User Interface
 - **Premium Logo & Header** - Gold ATHLOS branding on dark background
+- **Splash Screen** - Fast logo display on app startup (800ms)
 - **9 Color Palettes** - User can personalize theme (Premium Dark, Ocean Blue, Forest Green, etc.)
 - **Daily Motivational Quotes** - Admin-controlled, real-time updates
 - **Smart Back Button** - 2-tap exit with safety toast warning
@@ -219,7 +220,7 @@ npm run test:all
 
 ## 🚀 Deployment
 
-### Firebase Commands
+### Firebase Hosting
 
 ```bash
 # Deploy everything
@@ -232,13 +233,38 @@ firebase deploy --only firestore:rules
 firebase deploy --only hosting
 ```
 
-### Production Checklist
+### Vercel Deployment
 
-- ✅ All tests passing (`npm run test:all`)
-- ✅ Production build created (`npm run build`)
-- ✅ Environment variables set
-- ✅ Firestore Rules deployed
-- ✅ Firebase hosting configured
+1. **Push to GitHub**:
+```bash
+git push origin main
+```
+
+2. **Connect to Vercel**:
+- Go to vercel.com
+- Click "New Project"
+- Select your GitHub repository
+- Vercel will auto-detect React app
+
+3. **Set Environment Variables**:
+   - In Vercel Dashboard → Settings → Environment Variables
+   - Add all variables from `.env`:
+     - `REACT_APP_FIREBASE_API_KEY`
+     - `REACT_APP_FIREBASE_PROJECT_ID`
+     - `REACT_APP_FIREBASE_APP_ID`
+     - `REACT_APP_FIREBASE_MESSAGING_SENDER_ID`
+     - `REACT_APP_GEMINI_KEY` (optional)
+
+4. **Deploy**:
+   - Vercel auto-deploys on every push to main
+   - View deployment at: `yourapp.vercel.app`
+
+### Environment Variables for Production
+
+Set in Firebase Console or Vercel:
+1. Go to Project Settings → Environment Variables
+2. Add all 4 required variables
+3. Build will validate on deployment
 
 ---
 

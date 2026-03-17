@@ -11,7 +11,7 @@ import {
 import {
   generateToken, verifyToken, storeToken, getStoredToken, clearToken, getCurrentUserId
 } from "./security/tokenManager";
-// NEW: UI components
+import { AthlpsSplashScreen } from "./components/SplashScreen";
 import { AthlosBrandHeader } from "./components/AthlosBrandHeader";
 import { ColorPalettePicker } from "./components/ColorPalettePicker";
 import { BackButtonExitHandler } from "./components/BackButtonExitHandler";
@@ -1315,9 +1315,15 @@ export default function App() {
 
   if (!loggedInUser) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
-        <div className="w-full max-w-sm animate-in fade-in duration-500">
-          <div className="text-center mb-10"><div className="bg-zinc-900 w-16 h-16 rounded-2xl mx-auto flex items-center justify-center mb-4 border border-zinc-800 shadow-xl"><Dumbbell className="text-amber-500" size={32}/></div><h1 className="text-3xl font-black tracking-tighter">ATHLOS</h1><p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Entrenamiento Pro</p></div>
+      <>
+        <AthlpsSplashScreen />
+        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
+          <div className="w-full max-w-sm animate-in fade-in duration-500">
+            <div className="text-center mb-10">
+              <div className="text-6xl font-black mb-4 text-amber-500">⚡</div>
+              <h1 className="text-4xl font-black tracking-tighter">ATHLOS</h1>
+              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Entrenamiento Premium</p>
+            </div>
           <div className="space-y-4">
             <input type="text" placeholder="Usuario" className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
             <input type="password" placeholder="Contraseña" className={`w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold focus:outline-none focus:border-amber-500 transition-colors ${loginPass ? 'text-amber-500 tracking-[0.5em]' : 'text-zinc-600'}`} value={loginPass} onChange={(e) => setLoginPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && authenticate()} />
@@ -1327,6 +1333,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      </>
     );
   }
 

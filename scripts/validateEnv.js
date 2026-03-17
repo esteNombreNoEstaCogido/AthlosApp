@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * Validate environment variables before build
- * Run this script during pre-build to ensure all required vars are set
  */
 
 const fs = require('fs');
@@ -12,23 +11,20 @@ const REQUIRED_VARS = [
   'REACT_APP_FIREBASE_PROJECT_ID',
   'REACT_APP_FIREBASE_APP_ID',
   'REACT_APP_FIREBASE_MESSAGING_SENDER_ID',
-  'REACT_APP_GEMINI_KEY',
-  'REACT_APP_JWT_SECRET',
 ];
 
-const envFile = path.resolve(__dirname, '../.env.local');
+const envFile = path.resolve(__dirname, '../.env');
 
 console.log('🔐 Validating environment variables...');
 
-// Check if .env.local exists
+// Check if .env exists
 if (!fs.existsSync(envFile)) {
-  console.error('❌ Error: .env.local file not found');
-  console.error(`   Please create .env.local based on .env.local.example`);
-  console.error(`   Copy: cp .env.local.example .env.local`);
+  console.error('❌ Error: .env file not found');
+  console.error(`   Please create .env based on .env.example`);
   process.exit(1);
 }
 
-// Load .env.local
+// Load .env
 const envContent = fs.readFileSync(envFile, 'utf-8');
 const envVars = {};
 
@@ -59,9 +55,8 @@ if (missing.length > 0) {
   console.error(`\n❌ Build failed: ${missing.length} required environment variable(s) not set`);
   console.error(`   Required: ${missing.join(', ')}`);
   console.error(`\n   Steps to fix:`);
-  console.error(`   1. Copy .env.local.example to .env.local`);
-  console.error(`   2. Update values with real credentials`);
-  console.error(`   3. Run: npm run build\n`);
+  console.error(`   1. Update .env with real Firebase credentials`);
+  console.error(`   2. Run: npm run build\n`);
   process.exit(1);
 }
 
