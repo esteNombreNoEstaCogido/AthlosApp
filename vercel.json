@@ -1,9 +1,10 @@
 {
-  "buildCommand": "npm run build",
-  "devCommand": "npm start",
-  "installCommand": "npm install",
+  "buildCommand": "pnpm run build",
+  "devCommand": "pnpm start",
+  "installCommand": "pnpm install",
   "framework": "create-react-app",
   "outputDirectory": "build",
+  "nodeVersion": "18.x",
   "env": {
     "REACT_APP_FIREBASE_API_KEY": "@firebase_api_key",
     "REACT_APP_FIREBASE_PROJECT_ID": "@firebase_project_id",
