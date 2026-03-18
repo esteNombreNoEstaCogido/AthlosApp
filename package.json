@@ -24,7 +24,7 @@
   "scripts": {
     "validate-env": "node scripts/validateEnv.js",
     "start": "npm run validate-env && react-scripts start",
-    "build": "cross-env CI=false npm run validate-env && react-scripts build",
+    "build": "npm run validate-env && react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "test:all": "node scripts/phase6_securityTests.js",
     "test:security": "node scripts/phase6_securityTests.js",
