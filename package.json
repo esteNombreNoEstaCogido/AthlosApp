@@ -17,13 +17,14 @@
   "devDependencies": {
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",
+    "cross-env": "^10.1.0",
     "loader-utils": "3.2.1",
     "typescript": "5.7.2"
   },
   "scripts": {
     "validate-env": "node scripts/validateEnv.js",
     "start": "npm run validate-env && react-scripts start",
-    "build": "npm run validate-env && react-scripts build",
+    "build": "cross-env CI=false npm run validate-env && react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "test:all": "node scripts/phase6_securityTests.js",
     "test:security": "node scripts/phase6_securityTests.js",

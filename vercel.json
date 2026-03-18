@@ -1,0 +1,8 @@
+{
+  "buildCommand": "CI=false npm run validate-env && react-scripts build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "env": {
+    "CI": "false"
+  },
+  "regions": ["iad1"]
+}
