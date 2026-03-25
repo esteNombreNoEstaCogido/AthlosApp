@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, memo, useRef } from "react";
 import html2pdf from "html2pdf.js";
 import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager.js";
 import { 
-  sanitizeInput, sanitizeUrl, sanitizeName 
+  sanitizeInput, sanitizeUrl, sanitizeName, safeJSONParse 
 } from "./security/sanitization.js";
 import {
   safeParseWeight, safeParseReps, safeParseSerries,
