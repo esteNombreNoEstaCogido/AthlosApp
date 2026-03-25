@@ -1402,18 +1402,18 @@ export default function App() {
   const dailyNotes = client.notes || [];
   const validDays = Array.isArray(client.workoutData?.days) ? client.workoutData.days : [];
   const validNotes = Array.isArray(client.notes) ? client.notes : [];
+  const palette = !isAdminMode ? getPaletteById(preferredPaletteId) : null;
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-500 ${isAdminMode ? "bg-black text-white" : "bg-[#FDFDFD] text-zinc-900"}`}>
-      <div className="max-w-md mx-auto p-6 pb-32">
+    <div className="min-h-screen font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
+      <div className={`max-w-md mx-auto p-6 pb-32 ${isAdminMode ? 'bg-black text-white' : ''}`}>
         <div className="flex justify-between items-center mb-6">
-           <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-[9px] font-black uppercase text-zinc-400">{isOnline ? 'Online' : 'Offline'}</span></div>
+           <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-[9px] font-black uppercase" style={palette ? { color: `${palette.text}80` } : { color: '#a1a1aa' }}>{isOnline ? 'Online' : 'Offline'}</span></div>
            <div className="flex gap-2">
               {isAdminMode && <button onClick={() => setIsAdminMode(false)} className="bg-blue-500/10 text-blue-500 p-2 rounded-xl text-xs font-bold px-3">Ver como cliente</button>}
               {!isAdminMode && loggedInUser === 'entrenador' && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-500 p-2 rounded-xl"><Crown size={18}/></button>}
-              {!isAdminMode && loggedInUser !== 'entrenador' && <button onClick={() => setShowClientSettings(!showClientSettings)} className={`p-2 rounded-xl transition-all ${showClientSettings ? 'bg-amber-500 text-black' : 'bg-zinc-100 text-zinc-500'}`}><Settings size={18}/></button>}
-              <button onClick={() => setShowPasswordModal(true)} className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl"><Key size={18}/></button>
-              <button onClick={signOutUser} className="bg-red-50 text-red-500 p-2 rounded-xl border border-red-100"><LogOut size={18}/></button>
+              {!isAdminMode && loggedInUser !== 'entrenador' && <button onClick={() => setShowClientSettings(true)} className="p-2 rounded-xl transition-all" style={palette ? { backgroundColor: `${palette.accent}20`, color: palette.accent } : {}}><Settings size={18}/></button>}
+              <button onClick={signOutUser} className="p-2 rounded-xl border" style={palette ? { backgroundColor: `${palette.card}`, borderColor: `${palette.accent}30`, color: '#ef4444' } : { backgroundColor: '#fef2f2', color: '#ef4444', borderColor: '#fee2e2' }}><LogOut size={18}/></button>
            </div>
         </div>
 
@@ -1645,38 +1645,14 @@ export default function App() {
                 <div className="text-center py-10 opacity-40 font-bold text-sm italic">Rutina en construcción...</div>
               ) : null}
               {validDays.map(day => (
-                <button key={day.id} onClick={() => navigateTo("day", day)} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-zinc-100 text-zinc-900"} flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left`}>
-                  <div className="flex items-center gap-4"><div className={`${isAdminMode ? "bg-zinc-800 text-amber-500" : "bg-gray-50 text-gray-500"} p-4 rounded-3xl transition-transform group-hover:scale-105`}><Dumbbell size={28}/></div><div><p className={`text-[9px] font-black uppercase tracking-widest ${isAdminMode ? "text-zinc-500" : "text-gray-400"}`}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
-                  <ChevronRight className={isAdminMode ? "text-zinc-700" : "text-gray-300"} size={24}/>
+                <button key={day.id} onClick={() => navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
+                  <div className="flex items-center gap-4"><div className="p-4 rounded-3xl" style={palette ? { backgroundColor: `${palette.accent}15`, color: palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: '#f9fafb', color: '#6b7280' }}><Dumbbell size={28}/></div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
+                  <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </button>
               ))}
             </div>
 
-            {/* Client Settings Panel (collapsible) */}
-            {!isAdminMode && showClientSettings && (
-              <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-6 rounded-[2rem] border border-zinc-700 shadow-xl animate-in slide-in-from-top-4 duration-300 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-amber-500 font-black uppercase text-[10px] flex items-center gap-2"><Settings size={14}/> Ajustes</h3>
-                  <button onClick={() => setShowClientSettings(false)} className="text-zinc-500 hover:text-white"><X size={16}/></button>
-                </div>
-                <ColorPalettePicker
-                  selectedPaletteId={preferredPaletteId}
-                  onPaletteSelect={(paletteId) => {
-                    setPreferredPaletteId(paletteId);
-                    saveUserColorPreference(loggedInUser, paletteId);
-                    showSuccess('Tema personalizado ✨');
-                  }}
-                  isCompact={false}
-                />
-                <button onClick={() => setShowPasswordModal(true)} className="w-full flex items-center gap-3 bg-zinc-800 hover:bg-zinc-700 p-4 rounded-xl transition-all text-left">
-                  <Key size={16} className="text-amber-500"/>
-                  <div>
-                    <p className="text-white text-xs font-bold">Cambiar contraseña</p>
-                    <p className="text-zinc-500 text-[9px]">Actualizar tu contraseña de acceso</p>
-                  </div>
-                </button>
-              </div>
-            )}
+            {/* Client Settings Modal is rendered at the bottom with other modals */}
 
             {/* NEW: Admin Motivational Phrase Manager */}
             {isAdminMode && (
@@ -1689,8 +1665,8 @@ export default function App() {
               />
             )}
 
-            <div className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-amber-50 border-amber-100 text-zinc-900"} p-6 rounded-[2rem] border shadow-sm`}>
-               <h3 className="text-[10px] font-black uppercase text-amber-600 mb-2 flex items-center gap-2"><LayoutDashboard size={14}/> Mensaje Coach</h3>
+            <div className="p-6 rounded-[2rem] border shadow-sm" style={palette ? { backgroundColor: `${palette.accent}10`, borderColor: `${palette.accent}25`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
+               <h3 className="text-[10px] font-black uppercase mb-2 flex items-center gap-2" style={palette ? { color: palette.accent } : { color: '#d97706' }}><LayoutDashboard size={14}/> Mensaje Coach</h3>
                <p className="text-sm italic font-medium leading-relaxed">"{String(client.advice || "")}"</p>
             </div>
           </div>
@@ -1710,7 +1686,7 @@ export default function App() {
                <button onClick={() => navigateTo("home")} className="text-zinc-400 font-bold text-sm uppercase flex items-center gap-2"><ArrowLeft size={16}/> Volver</button>
                {!sessionStart && <button onClick={() => { setSessionStart(Date.now()); setSessionElapsed(0); }} className="bg-amber-500 text-black text-[10px] font-black px-6 py-2 rounded-full uppercase shadow-lg">INICIAR CRONO</button>}
             </div>
-            <h2 className={`text-3xl font-black ${isAdminMode ? 'text-white' : 'text-gray-900'}`}>{String(selectedDay.title || "")}</h2>
+            <h2 className="text-3xl font-black" style={palette ? { color: palette.text } : isAdminMode ? { color: 'white' } : { color: '#111827' }}>{String(selectedDay.title || "")}</h2>
             {selectedDay.warmupType && warmupData[selectedDay.warmupType] && (
               <div className="bg-zinc-900 text-white p-6 rounded-[2.5rem] shadow-xl border border-zinc-800">
                 <h3 className="font-black text-xs uppercase tracking-widest flex items-center gap-2 mb-4"><Flame className="text-amber-500"/> {String(warmupData[selectedDay.warmupType].title || "Calentamiento")}</h3>
@@ -1731,9 +1707,9 @@ export default function App() {
         {activeTab === "stats" && (
           <div className="space-y-8 animate-in fade-in duration-500 mt-4">
             <h2 className="text-2xl font-black">Evolución</h2>
-            <div className={`flex gap-2 p-1 rounded-xl ${isAdminMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-gray-100'}`}>
-               <button onClick={() => setChartMode('weight')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg ${chartMode==='weight' ? (isAdminMode ? 'bg-amber-500 text-black shadow' : 'bg-white shadow text-zinc-900') : 'text-zinc-500'}`}>PESO MÁX</button>
-               <button onClick={() => setChartMode('volume')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg ${chartMode==='volume' ? (isAdminMode ? 'bg-amber-500 text-black shadow' : 'bg-white shadow text-zinc-900') : 'text-zinc-500'}`}>VOLUMEN</button>
+            <div className="flex gap-2 p-1 rounded-xl" style={palette ? { backgroundColor: palette.card, border: `1px solid ${palette.accent}20` } : isAdminMode ? { backgroundColor: '#18181b', border: '1px solid #27272a' } : { backgroundColor: '#f3f4f6' }}>
+               <button onClick={() => setChartMode('weight')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg`} style={chartMode==='weight' ? { backgroundColor: palette?.accent || (isAdminMode ? '#f59e0b' : '#ffffff'), color: palette ? palette.dark : (isAdminMode ? 'black' : '#18181b'), boxShadow: '0 1px 3px rgba(0,0,0,0.2)' } : { color: `${palette?.text || '#71717a'}80` }}>PESO MÁX</button>
+               <button onClick={() => setChartMode('volume')} className={`flex-1 py-2 text-[10px] font-bold rounded-lg`} style={chartMode==='volume' ? { backgroundColor: palette?.accent || (isAdminMode ? '#f59e0b' : '#ffffff'), color: palette ? palette.dark : (isAdminMode ? 'black' : '#18181b'), boxShadow: '0 1px 3px rgba(0,0,0,0.2)' } : { color: `${palette?.text || '#71717a'}80` }}>VOLUMEN</button>
             </div>
             {Object.keys(workoutLogs).length === 0 && <div className="text-center py-20 opacity-30 italic">No hay datos registrados aún.</div>}
             {validDays.map(d => (Array.isArray(d.exercises) ? d.exercises : []).map((ex,i) => {
@@ -1750,7 +1726,7 @@ export default function App() {
                         label={ex.name}
                         current={parseFloat(l[0]?.weight) || 0}
                         previous={l.length > 1 ? parseFloat(l[Math.min(5, l.length - 1)]?.weight) || parseFloat(l[0]?.weight) : parseFloat(l[0]?.weight)}
-                        color={isAdminMode ? "#f59e0b" : "#3b82f6"}
+                        color={palette?.accent || (isAdminMode ? "#f59e0b" : "#3b82f6")}
                       />
                     )}
                  </div>
@@ -1763,15 +1739,15 @@ export default function App() {
         {activeTab === "journal" && (
           <div className="space-y-8 animate-in fade-in duration-500 mt-4">
             <h2 className="text-2xl font-black">Diario</h2>
-            <div className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-100 text-gray-900"} p-6 rounded-[2rem] border shadow-sm space-y-3`}>
-               <textarea placeholder="¿Cómo te has sentido hoy?..." className={`w-full ${isAdminMode ? "bg-zinc-950 border-zinc-800" : "bg-gray-50 border-gray-100"} border rounded-xl p-4 text-xs font-medium focus:border-amber-500 outline-none h-24`} value={noteText} onChange={e => setNoteText(e.target.value)} />
-               <button onClick={addNoteRecord} className={`w-full ${isAdminMode ? "bg-amber-500 text-black" : "bg-blue-600 text-white"} font-black py-4 rounded-xl text-[10px] uppercase`}>Guardar Nota</button>
+            <div className="p-6 rounded-[2rem] border shadow-sm space-y-3" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : { backgroundColor: 'white', borderColor: '#f3f4f6', color: '#111827' }}>
+               <textarea placeholder="¿Cómo te has sentido hoy?..." className="w-full border rounded-xl p-4 text-xs font-medium outline-none h-24" style={palette ? { backgroundColor: palette.dark, borderColor: `${palette.accent}30`, color: palette.text } : isAdminMode ? { backgroundColor: '#09090b', borderColor: '#27272a', color: 'white' } : { backgroundColor: '#f9fafb', borderColor: '#f3f4f6', color: '#111827' }} value={noteText} onChange={e => setNoteText(e.target.value)} />
+               <button onClick={addNoteRecord} className="w-full font-black py-4 rounded-xl text-[10px] uppercase" style={palette ? { backgroundColor: palette.accent, color: palette.dark } : isAdminMode ? { backgroundColor: '#f59e0b', color: 'black' } : { backgroundColor: '#2563eb', color: 'white' }}>Guardar Nota</button>
             </div>
             <div className="space-y-4">
               {validNotes.map(n => (
-                <div key={n.id} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-zinc-300" : "bg-white border-gray-50 text-gray-700"} p-5 rounded-[1.5rem] border shadow-sm flex flex-col gap-3`}>
+                <div key={n.id} className="p-5 rounded-[1.5rem] border shadow-sm flex flex-col gap-3" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}15`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: '#d4d4d8' } : { backgroundColor: 'white', borderColor: '#fafafa', color: '#374151' }}>
                    <div className="flex justify-between items-start w-full"><p className="text-sm leading-relaxed pr-4">{String(n.text || "")}</p><button onClick={() => updateUserInCloud(currentClientId, u => ({...u, notes: (Array.isArray(u.notes) ? u.notes : []).filter(x => x.id !== n.id)}))} className="text-red-400"><Trash2 size={14}/></button></div>
-                   <div className="flex justify-between items-center"><span className="text-[9px] font-black text-zinc-400">{String(n.date || "")}</span></div>
+                   <div className="flex justify-between items-center"><span className="text-[9px] font-black" style={{ color: `${palette?.text || '#a1a1aa'}60` }}>{String(n.date || "")}</span></div>
                 </div>
               ))}
             </div>
@@ -1780,14 +1756,89 @@ export default function App() {
 
       </div>
 
-      <nav className={`fixed bottom-8 left-1/2 -translate-x-1/2 ${isAdminMode ? "bg-zinc-900/90 border-zinc-800" : "bg-white/90 border-gray-100"} backdrop-blur-md border px-8 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-8 z-50`}>
-        <button onClick={() => navigateTo("home")} className={`transition-all ${activeTab === "home" ? "text-amber-500 scale-125" : "text-zinc-400"}`}><User size={24} /></button>
-        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className={`transition-all ${activeTab === "day" ? "text-amber-500 scale-125" : "text-zinc-400"}`}><Dumbbell size={24} /></button>
-        <button onClick={() => navigateTo("stats")} className={`transition-all ${activeTab === "stats" ? "text-amber-500 scale-125" : "text-zinc-400"}`}><TrendingUp size={24} /></button>
-        <button onClick={() => navigateTo("journal")} className={`transition-all ${activeTab === "journal" ? "text-amber-500 scale-125" : "text-zinc-400"}`}><Heart size={24} /></button>
+      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 backdrop-blur-md border px-8 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-8 z-50" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}20` } : isAdminMode ? { backgroundColor: '#18181bee', borderColor: '#27272a' } : { backgroundColor: '#ffffffee', borderColor: '#f3f4f6' }}>
+        <button onClick={() => navigateTo("home")} className="transition-all" style={activeTab === "home" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={24} /></button>
+        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className="transition-all" style={activeTab === "day" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={24} /></button>
+        <button onClick={() => navigateTo("stats")} className="transition-all" style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={24} /></button>
+        <button onClick={() => navigateTo("journal")} className="transition-all" style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={24} /></button>
       </nav>
 
       {/* --- MODALES --- */}
+
+      {/* Client Settings Modal */}
+      {showClientSettings && !isAdminMode && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setShowClientSettings(false); }}>
+          <div className="w-full max-w-md rounded-t-[2.5rem] p-6 pb-10 space-y-6 shadow-2xl animate-in slide-in-from-bottom-10 duration-300 max-h-[85vh] overflow-y-auto" style={{ backgroundColor: palette?.card || '#1a1a1a', borderTop: `2px solid ${palette?.accent || '#D4AF37'}40` }}>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl" style={{ backgroundColor: `${palette?.accent || '#D4AF37'}20` }}>
+                  <Settings size={18} style={{ color: palette?.accent || '#D4AF37' }}/>
+                </div>
+                <div>
+                  <h3 className="font-black uppercase text-sm" style={{ color: palette?.accent || '#D4AF37' }}>Ajustes</h3>
+                  <p className="text-[9px] opacity-60" style={{ color: palette?.text || '#fff' }}>Personaliza tu experiencia</p>
+                </div>
+              </div>
+              <button onClick={() => setShowClientSettings(false)} className="p-2 rounded-full hover:opacity-70 transition-opacity" style={{ backgroundColor: `${palette?.text || '#fff'}10` }}><X size={18} style={{ color: `${palette?.text || '#fff'}80` }}/></button>
+            </div>
+
+            {/* Theme Selector */}
+            <div className="space-y-4">
+              <h4 className="text-[10px] font-black uppercase tracking-wider" style={{ color: `${palette?.text || '#fff'}60` }}>🎨 Tema de Color</h4>
+              <div className="grid grid-cols-3 gap-3">
+                {COLOR_PALETTES.map((p) => {
+                  const isSelected = p.id === preferredPaletteId;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setPreferredPaletteId(p.id);
+                        saveUserColorPreference(loggedInUser, p.id);
+                        showSuccess('Tema aplicado ✨');
+                      }}
+                      className="relative rounded-2xl p-3 transition-all active:scale-95"
+                      style={{
+                        backgroundColor: p.dark,
+                        border: isSelected ? `2px solid ${p.accent}` : `1px solid ${p.accent}30`,
+                        boxShadow: isSelected ? `0 0 20px ${p.accent}30` : 'none',
+                      }}
+                    >
+                      {/* Color circles preview */}
+                      <div className="flex justify-center gap-1.5 mb-2">
+                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: p.dark, border: `1px solid ${p.text}30` }}/>
+                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: p.card }}/>
+                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: p.accent }}/>
+                      </div>
+                      <p className="text-[8px] font-bold text-center truncate" style={{ color: p.accent }}>{p.name}</p>
+                      {isSelected && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: p.accent }}>
+                          <CheckCircle2 size={12} style={{ color: p.dark }} strokeWidth={3}/>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="h-px" style={{ backgroundColor: `${palette?.text || '#fff'}10` }}/>
+
+            {/* Password Change */}
+            <button onClick={() => { setShowClientSettings(false); setShowPasswordModal(true); }} className="w-full flex items-center gap-4 p-4 rounded-2xl transition-all active:scale-95" style={{ backgroundColor: `${palette?.accent || '#D4AF37'}10`, border: `1px solid ${palette?.accent || '#D4AF37'}20` }}>
+              <div className="p-2 rounded-xl" style={{ backgroundColor: `${palette?.accent || '#D4AF37'}20` }}>
+                <Key size={16} style={{ color: palette?.accent || '#D4AF37' }}/>
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold" style={{ color: palette?.text || '#fff' }}>Cambiar contraseña</p>
+                <p className="text-[9px]" style={{ color: `${palette?.text || '#fff'}50` }}>Actualizar tu contraseña de acceso</p>
+              </div>
+              <ChevronRight size={16} className="ml-auto" style={{ color: `${palette?.text || '#fff'}40` }}/>
+            </button>
+          </div>
+        </div>
+      )}
       {showPasswordModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-6 space-y-4 shadow-2xl">
