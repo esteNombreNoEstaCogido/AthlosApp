@@ -91,7 +91,7 @@ export const AdminMotivationalManager = ({
 
       {/* Content */}
       {isExpanded && (
-        <div className="p-4 space-y-4 border-t" style={{ borderTopColor: colors.accent, opacity: 0.2 }}>
+        <div className="p-4 space-y-4 border-t" style={{ borderTopColor: `${colors.accent}33` }}>
           
           {/* Current Phrase Display */}
           {currentPhrase && (
@@ -122,12 +122,11 @@ export const AdminMotivationalManager = ({
               placeholder="Escribe una frase inspiradora para tus clientes..."
               maxLength={200}
               rows="3"
-              className="w-full p-3 rounded-lg text-sm resize-none focus:outline-none focus:ring-2"
+              className="w-full p-3 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 border"
               style={{
                 backgroundColor: colors.dark,
                 color: colors.text,
-                borderColor: colors.accent,
-                focusRing: colors.accent,
+                borderColor: `${colors.accent}40`,
               }}
             />
             <div className="flex justify-between items-center">

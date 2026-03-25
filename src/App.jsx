@@ -659,6 +659,17 @@ export default function App() {
   const [timerDuration, setTimerDuration] = useState(null);
   const [timerKey, setTimerKey] = useState(0);
 
+  // Admin: client info & password reset
+  const [showClientInfoModal, setShowClientInfoModal] = useState(false);
+  const [clientInfoTarget, setClientInfoTarget] = useState(null);
+  const [adminResetPwd, setAdminResetPwd] = useState("");
+  const [adminResetPwdConfirm, setAdminResetPwdConfirm] = useState("");
+  const [adminResetError, setAdminResetError] = useState("");
+  const [adminResetSuccess, setAdminResetSuccess] = useState("");
+
+  // Client: settings panel
+  const [showClientSettings, setShowClientSettings] = useState(false);
+
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
   const lastAppliedUpdateRef = useRef({});
@@ -1201,6 +1212,35 @@ export default function App() {
 
   const handleChangePassword = changePassword;
 
+  const adminResetClientPassword = async () => {
+    if (!clientInfoTarget || !isAdminMode) return;
+    if (!adminResetPwd || !adminResetPwdConfirm) {
+      setAdminResetError("Todos los campos son obligatorios");
+      return;
+    }
+    if (adminResetPwd.length < 4) {
+      setAdminResetError("La contraseña debe tener al menos 4 caracteres");
+      return;
+    }
+    if (adminResetPwd !== adminResetPwdConfirm) {
+      setAdminResetError("Las contraseñas no coinciden");
+      return;
+    }
+    try {
+      const newHash = await hashPassword(adminResetPwd);
+      updateUserInCloud(clientInfoTarget, u => ({ ...u, password: newHash }));
+      setAdminResetError("");
+      setAdminResetSuccess("Contraseña actualizada correctamente ✓");
+      setTimeout(() => {
+        setAdminResetPwd("");
+        setAdminResetPwdConfirm("");
+        setAdminResetSuccess("");
+      }, 2000);
+    } catch (error) {
+      setAdminResetError("Error al actualizar contraseña");
+    }
+  };
+
   const startTimerHook = useCallback((s) => { setTimerDuration(s); setTimerKey((k) => k + 1); }, []);
   const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); window.scrollTo(0,0); };
 
@@ -1217,7 +1257,7 @@ export default function App() {
     });
   }, [currentClientId, updateUserInCloud]);
 
-  const runCreateProfile = () => {
+  const runCreateProfile = async () => {
     const name = sanitizeInput(newClient.name).trim();
     const username = sanitizeInput(newClient.username).trim().toLowerCase();
     const password = newClient.password;
@@ -1235,11 +1275,17 @@ export default function App() {
     } else if (newClient.sourceTemplate.startsWith("client_")) {
       sourceDays = db[newClient.sourceTemplate.replace("client_", "")]?.workoutData?.days || [];
     }
-    updateUserInCloud(id, () => ({
-      username: username, password: password, name: name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: JSON.parse(JSON.stringify(sourceDays)) }
-    }));
-    setCurrentClientId(id); setShowAddClientModal(false);
-    setNewClient({ name: "", username: "", password: "", sourceTemplate: "" });
+    try {
+      const hashedPassword = await hashPassword(password);
+      updateUserInCloud(id, () => ({
+        username: username, password: hashedPassword, name: name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: JSON.parse(JSON.stringify(sourceDays)) }
+      }));
+      setCurrentClientId(id); setShowAddClientModal(false);
+      setNewClient({ name: "", username: "", password: "", sourceTemplate: "" });
+    } catch (error) {
+      setToast({ type: "ERROR", message: "Error al crear cuenta" }); 
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   useEffect(() => {
@@ -1364,7 +1410,8 @@ export default function App() {
            <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-[9px] font-black uppercase text-zinc-400">{isOnline ? 'Online' : 'Offline'}</span></div>
            <div className="flex gap-2">
               {isAdminMode && <button onClick={() => setIsAdminMode(false)} className="bg-blue-500/10 text-blue-500 p-2 rounded-xl text-xs font-bold px-3">Ver como cliente</button>}
-              {!isAdminMode && loggedInUser === 'entrenador' && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-500 p-2 rounded-xl"><Settings size={18}/></button>}
+              {!isAdminMode && loggedInUser === 'entrenador' && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-500 p-2 rounded-xl"><Crown size={18}/></button>}
+              {!isAdminMode && loggedInUser !== 'entrenador' && <button onClick={() => setShowClientSettings(!showClientSettings)} className={`p-2 rounded-xl transition-all ${showClientSettings ? 'bg-amber-500 text-black' : 'bg-zinc-100 text-zinc-500'}`}><Settings size={18}/></button>}
               <button onClick={() => setShowPasswordModal(true)} className="bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl"><Key size={18}/></button>
               <button onClick={signOutUser} className="bg-red-50 text-red-500 p-2 rounded-xl border border-red-100"><LogOut size={18}/></button>
            </div>
@@ -1416,7 +1463,10 @@ export default function App() {
                 </div>
                 <div className="flex gap-6 overflow-x-auto scrollbar-hide pb-4">
                   {Object.keys(db).filter(id => id !== 'entrenador').map(id => (
-                    <button key={id} onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase shrink-0 transition-all ${editingClientId === id ? 'bg-amber-500 text-black shadow-lg scale-105' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}>{String(db[id].name || id)}</button>
+                    <div key={id} className="flex flex-col items-center gap-2 shrink-0">
+                      <button onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${editingClientId === id ? 'bg-amber-500 text-black shadow-lg scale-105' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}>{String(db[id].name || id)}</button>
+                      <button onClick={() => { setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="text-zinc-600 hover:text-amber-500 transition-colors text-[8px] font-bold flex items-center gap-1"><Eye size={10}/> Info</button>
+                    </div>
                   ))}
                 </div>
                 
@@ -1602,9 +1652,13 @@ export default function App() {
               ))}
             </div>
 
-            {/* NEW: Color Palette Picker for personalization */}
-            {!isAdminMode && (
-              <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-8 rounded-[2rem] border border-zinc-700 shadow-xl">
+            {/* Client Settings Panel (collapsible) */}
+            {!isAdminMode && showClientSettings && (
+              <div className="bg-gradient-to-br from-zinc-800 to-zinc-900 p-6 rounded-[2rem] border border-zinc-700 shadow-xl animate-in slide-in-from-top-4 duration-300 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-amber-500 font-black uppercase text-[10px] flex items-center gap-2"><Settings size={14}/> Ajustes</h3>
+                  <button onClick={() => setShowClientSettings(false)} className="text-zinc-500 hover:text-white"><X size={16}/></button>
+                </div>
                 <ColorPalettePicker
                   selectedPaletteId={preferredPaletteId}
                   onPaletteSelect={(paletteId) => {
@@ -1614,6 +1668,13 @@ export default function App() {
                   }}
                   isCompact={false}
                 />
+                <button onClick={() => setShowPasswordModal(true)} className="w-full flex items-center gap-3 bg-zinc-800 hover:bg-zinc-700 p-4 rounded-xl transition-all text-left">
+                  <Key size={16} className="text-amber-500"/>
+                  <div>
+                    <p className="text-white text-xs font-bold">Cambiar contraseña</p>
+                    <p className="text-zinc-500 text-[9px]">Actualizar tu contraseña de acceso</p>
+                  </div>
+                </button>
               </div>
             )}
 
@@ -1768,6 +1829,52 @@ export default function App() {
       )}
 
       {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className="bg-green-600 text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20"><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{String(toast.message)}</span></div></div>)}
+
+      {/* Admin: Client Info & Password Reset Modal */}
+      {showClientInfoModal && clientInfoTarget && db[clientInfoTarget] && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-6 space-y-5 shadow-2xl">
+            <div className="flex justify-between items-center">
+              <h3 className="text-amber-500 font-black uppercase text-sm flex items-center gap-2"><User size={18}/> Datos Cliente</h3>
+              <button onClick={() => { setShowClientInfoModal(false); setClientInfoTarget(null); }}><X size={20} className="text-zinc-500"/></button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-zinc-800 p-4 rounded-xl space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500 text-[9px] font-black uppercase">Nombre</span>
+                  <span className="text-white text-sm font-bold">{String(db[clientInfoTarget].name || clientInfoTarget)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500 text-[9px] font-black uppercase">Usuario</span>
+                  <span className="text-white text-sm font-bold">{String(db[clientInfoTarget].username || clientInfoTarget)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500 text-[9px] font-black uppercase">Subtítulo</span>
+                  <span className="text-zinc-300 text-xs">{String(db[clientInfoTarget].subtitle || "—")}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500 text-[9px] font-black uppercase">Días rutina</span>
+                  <span className="text-zinc-300 text-xs">{(Array.isArray(db[clientInfoTarget].workoutData?.days) ? db[clientInfoTarget].workoutData.days : []).length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500 text-[9px] font-black uppercase">Registros</span>
+                  <span className="text-zinc-300 text-xs">{Object.values(db[clientInfoTarget].logs || {}).flat().length}</span>
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-800 pt-4 space-y-3">
+                <h4 className="text-amber-500 text-[10px] font-black uppercase flex items-center gap-2"><Key size={12}/> Resetear Contraseña</h4>
+                <input type="password" placeholder="Nueva contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwd} onChange={e => setAdminResetPwd(e.target.value)} />
+                <input type="password" placeholder="Confirmar contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwdConfirm} onChange={e => setAdminResetPwdConfirm(e.target.value)} />
+                {adminResetError && <p className="text-red-500 text-[10px] text-center">{String(adminResetError)}</p>}
+                {adminResetSuccess && <p className="text-green-500 text-[10px] font-bold text-center">{String(adminResetSuccess)}</p>}
+                <button onClick={adminResetClientPassword} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">CAMBIAR CONTRASEÑA</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NEW: Toast notification container */}
       <div className="fixed bottom-24 right-4 z-40 space-y-2">
