@@ -1,39 +1,24 @@
 {
-  "name": "react",
+  "name": "athlos-app",
+  "private": true,
   "version": "1.0.0",
-  "description": "",
-  "keywords": [],
-  "main": "src/index.tsx",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "ajv": "^8.18.0",
     "bcryptjs": "^3.0.3",
-    "firebase": "12.10.0",
+    "firebase": "^12.10.0",
     "html2pdf.js": "^0.14.0",
-    "lucide-react": "0.563.0",
+    "lucide-react": "^0.563.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-scripts": "^5.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/react": "19.0.0",
-    "@types/react-dom": "19.0.0",
-    "cross-env": "^10.1.0",
-    "loader-utils": "3.2.1",
-    "typescript": "5.7.2"
-  },
-  "scripts": {
-    "validate-env": "node scripts/validateEnv.js",
-    "start": "npm run validate-env && react-scripts start",
-    "build": "npm run validate-env && react-scripts build",
-    "test": "react-scripts test --env=jsdom",
-    "test:all": "node scripts/phase6_securityTests.js",
-    "test:security": "node scripts/phase6_securityTests.js",
-    "eject": "react-scripts eject"
-  },
-  "browserslist": [
-    ">0.2%",
-    "not dead",
-    "not ie <= 11",
-    "not op_mini all"
-  ]
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.3.5"
+  }
 }

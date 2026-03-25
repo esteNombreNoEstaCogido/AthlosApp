@@ -54,9 +54,8 @@ export const AthlosBrandHeader = ({
 
   return (
     <div 
-      style={{ backgroundColor: colors.dark }}
+      style={{ backgroundColor: colors.dark, borderBottomColor: colors.accent }}
       className="w-full pt-8 pb-6 shadow-2xl border-b-2"
-      style={{ borderBottomColor: colors.accent }}
     >
       {/* Logo Section */}
       <div className="flex justify-center mb-6">

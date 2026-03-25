@@ -7,10 +7,10 @@ const fs = require('fs');
 const path = require('path');
 
 const REQUIRED_VARS = [
-  'REACT_APP_FIREBASE_API_KEY',
-  'REACT_APP_FIREBASE_PROJECT_ID',
-  'REACT_APP_FIREBASE_APP_ID',
-  'REACT_APP_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_APP_ID',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
 ];
 
 const envFile = path.resolve(__dirname, '../.env');

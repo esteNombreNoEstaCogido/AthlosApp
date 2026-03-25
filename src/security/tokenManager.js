@@ -6,7 +6,7 @@
  * - JWT format: header.payload.signature
  * - Algorithm: HS256 (HMAC-SHA256)
  * - Expiration: 24 hours
- * - Signed with secret from process.env.REACT_APP_JWT_SECRET
+ * - Signed with secret from import.meta.env.VITE_JWT_SECRET
  */
 
 // ==========================================
@@ -92,10 +92,10 @@ const hmacSha256 = async (message, secret) => {
  * @returns {Promise<string>} - JWT token
  */
 export const generateToken = async (userId, expiresInHours = 24) => {
-  const secret = process.env.REACT_APP_JWT_SECRET;
+  const secret = import.meta.env.VITE_JWT_SECRET;
 
   if (!secret || secret.includes('your_')) {
-    console.error('❌ ERROR: REACT_APP_JWT_SECRET not configured');
+    console.error('❌ ERROR: VITE_JWT_SECRET not configured');
     throw new Error('JWT secret not configured');
   }
 
@@ -128,10 +128,10 @@ export const generateToken = async (userId, expiresInHours = 24) => {
  * @returns {Promise<object>} - { valid, decoded, error }
  */
 export const verifyToken = async (token) => {
-  const secret = process.env.REACT_APP_JWT_SECRET;
+  const secret = import.meta.env.VITE_JWT_SECRET;
 
   if (!secret || secret.includes('your_')) {
-    console.error('❌ ERROR: REACT_APP_JWT_SECRET not configured');
+    console.error('❌ ERROR: VITE_JWT_SECRET not configured');
     return { valid: false, decoded: null, error: 'JWT secret not configured' };
   }
 
