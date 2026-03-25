@@ -35,16 +35,21 @@ import {
 // CONFIGURACIÓN FIREBASE
 // ==========================================
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "missing",
   authDomain: "athlos-5dcc5.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "athlos-5dcc5",
   storageBucket: "athlos-5dcc5.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "0",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "missing",
 };
 
-const app = initializeApp(firebaseConfig);
-const db_cloud = getFirestore(app);
+let app, db_cloud;
+try {
+  app = initializeApp(firebaseConfig);
+  db_cloud = getFirestore(app);
+} catch (err) {
+  console.error("Firebase init failed:", err.message);
+}
 const COLLECTION_NAME = "athlos_clients";
 
 // ==========================================
@@ -1383,8 +1388,8 @@ export default function App() {
               <div className="flex flex-col gap-1 relative z-10">
                  {isAdminMode && !isEditingClientRoutine ? (
                    <>
-                     <input defaultValue={String(client.name || "Cliente")} onBlur={e => actDay(null, 'name', e.target.value)} className="bg-transparent text-3xl font-black uppercase outline-none w-full" />
-                     <input defaultValue={String(client.subtitle || "")} onBlur={e => actDay(null, 'subtitle', e.target.value)} className="bg-transparent text-sm font-medium italic opacity-80 outline-none w-full" />
+                     <input defaultValue={String(client.name || "Cliente")} onBlur={e => modifyClientData('name', e.target.value)} className="bg-transparent text-3xl font-black uppercase outline-none w-full" />
+                     <input defaultValue={String(client.subtitle || "")} onBlur={e => modifyClientData('subtitle', e.target.value)} className="bg-transparent text-sm font-medium italic opacity-80 outline-none w-full" />
                    </>
                  ) : (
                    <>
