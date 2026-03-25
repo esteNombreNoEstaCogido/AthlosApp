@@ -675,33 +675,29 @@ export default function App() {
   // ✅ Restore session from JWT token on app load (Phase 5 - Session Management)
   useEffect(() => {
     const restoreSessionFromJWT = async () => {
-      const { getStoredToken, verifyToken, getCurrentUserId } = tokenManager;
       const token = getStoredToken();
       
       if (!token) {
-        // No token found, session is not authenticated
         setLoggedInUser(null);
         setDataLoaded(true);
         return;
       }
       
-      const { valid, decoded } = verifyToken(token);
+      const { valid, decoded } = await verifyToken(token);
       if (!valid) {
-        // Token is invalid or expired, clear it and logout
-        console.warn("🚨 JWT token invalid or expired - clearing session");
-        tokenManager.clearToken();
+        console.warn("JWT token invalid or expired - clearing session");
+        clearToken();
         setLoggedInUser(null);
         setDataLoaded(true);
         return;
       }
       
-      // Extract userId from JWT token subject claim
       const userId = decoded?.sub;
       if (userId) {
-        console.log("✅ Session restored from JWT:", userId);
+        console.log("Session restored from JWT:", userId);
         setLoggedInUser(userId);
       } else {
-        console.warn("🚨 JWT token valid but no userId found");
+        console.warn("JWT token valid but no userId found");
         setLoggedInUser(null);
       }
       
