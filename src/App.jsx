@@ -1319,19 +1319,25 @@ export default function App() {
       <>
         <AthlpsSplashScreen />
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
-          <div className="w-full max-w-sm animate-in fade-in duration-500">
-            <div className="text-center mb-10">
-              <div className="text-6xl font-black mb-4 text-amber-500">⚡</div>
+          <div className="w-full max-w-sm">
+            <div className="text-center mb-12">
+              <div className="relative mx-auto mb-5 w-16 h-16">
+                <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-xl" />
+                <div className="relative flex items-center justify-center w-16 h-16 bg-amber-500/10 rounded-full border border-amber-500/30">
+                  <span className="text-3xl">⚡</span>
+                </div>
+              </div>
               <h1 className="text-4xl font-black tracking-tighter">ATHLOS</h1>
-              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Entrenamiento Premium</p>
+              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-[0.3em] mt-1">Entrenamiento Premium</p>
             </div>
           <div className="space-y-4">
-            <input type="text" placeholder="Usuario" className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
+            <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
             <input type="password" placeholder="Contraseña" className={`w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold focus:outline-none focus:border-amber-500 transition-colors ${loginPass ? 'text-amber-500 tracking-[0.5em]' : 'text-zinc-600'}`} value={loginPass} onChange={(e) => setLoginPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && authenticate()} />
             <label className="flex items-center gap-2 text-zinc-400 text-xs font-bold pl-2 cursor-pointer mt-2"><input type="checkbox" checked={keepLoggedIn} onChange={(e) => setKeepLoggedIn(e.target.checked)} className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-amber-500 accent-amber-500" />Mantener sesión iniciada</label>
             {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
-            <button onClick={authenticate} className="w-full bg-amber-500 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg active:scale-95 transition-all mt-4">Acceder</button>
+            <button onClick={authenticate} className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4">Acceder</button>
           </div>
+          <p className="text-center text-zinc-700 text-[9px] mt-10">Athlos &copy; {new Date().getFullYear()}</p>
         </div>
       </div>
       </>
