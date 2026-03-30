@@ -73,7 +73,7 @@ export const ToastContainer = ({ toasts = [] }) => {
     <>
       {toasts.map((toast, idx) => (
         <div
-          key={idx}
+          key={toast.id || idx}
           className="fixed bottom-4 right-4 z-50 mb-4"
           style={{ bottom: `${(idx + 1) * 80}px` }}
         >

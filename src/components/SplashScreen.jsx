@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export const AthlpsSplashScreen = () => {
+export const AthlosSplashScreen = () => {
   const [phase, setPhase] = useState('enter'); // enter -> visible -> exit -> gone
 
   useEffect(() => {

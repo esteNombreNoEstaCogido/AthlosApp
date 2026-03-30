@@ -58,25 +58,25 @@ export const AthlosBrandHeader = ({
       className="w-full pt-8 pb-6 shadow-2xl border-b-2"
     >
       {/* Logo Section */}
-      <div className="flex justify-center mb-6">
+      <div className="flex justify-center mb-5">
         <div className="relative">
           {/* Glow effect */}
           <div 
-            className="absolute inset-0 blur-2xl opacity-30 rounded-full"
-            style={{ backgroundColor: colors.accent, width: '120px', height: '120px' }}
+            className="absolute inset-0 blur-3xl opacity-25 rounded-full"
+            style={{ backgroundColor: colors.accent, width: '200px', height: '200px', left: '-20px', top: '-20px' }}
           />
           {/* Logo container */}
           <div className="relative z-10 flex flex-col items-center">
-            <img src="/athlos-logo.png" alt="Athlos" className="w-24 h-24 object-contain mb-2 drop-shadow-[0_0_20px_rgba(212,175,55,0.3)]" />
+            <img src="/athlos-logo.png" alt="Athlos" className="w-40 h-40 object-contain drop-shadow-[0_0_30px_rgba(212,175,55,0.4)]" />
             <h1 
-              className="text-2xl font-black tracking-tight text-center"
-              style={{ color: colors.accent, letterSpacing: '-1px' }}
+              className="text-xl font-black tracking-tight text-center -mt-1"
+              style={{ color: colors.accent, letterSpacing: '-0.5px' }}
             >
               Entrenamiento Premium
             </h1>
             <div 
-              className="text-xs uppercase tracking-widest mt-1 font-bold"
-              style={{ color: colors.text, opacity: 0.7 }}
+              className="text-[10px] uppercase tracking-widest font-bold"
+              style={{ color: colors.text, opacity: 0.6 }}
             >
               by Sebas
             </div>
@@ -121,7 +121,7 @@ export const AthlosBrandHeader = ({
               backgroundColor: colors.secondary,
               borderLeft: `3px solid ${colors.accent}`,
             }}
-            onClick={() => isAdmin && setIsEditing(true)}
+            onClick={() => { if (isAdmin) { setEditValue(currentPhrase); setIsEditing(true); } }}
           >
             <div 
               className="text-lg font-bold leading-relaxed italic"

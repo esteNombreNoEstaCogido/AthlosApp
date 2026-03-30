@@ -2,16 +2,16 @@ import React, { useState, useEffect, useCallback, memo, useRef } from "react";
 import html2pdf from "html2pdf.js";
 import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager.js";
 import { 
-  sanitizeInput, sanitizeUrl, sanitizeName, safeJSONParse, escapeHtml 
+  sanitizeInput, sanitizeUrl, safeJSONParse, escapeHtml 
 } from "./security/sanitization.js";
 import {
   safeParseWeight, safeParseReps, safeParseSerries,
   validateWorkoutLogData as validateLogAJV
 } from "./security/validationSchemas.js";
 import {
-  generateToken, verifyToken, storeToken, getStoredToken, clearToken, getCurrentUserId
+  generateToken, verifyToken, storeToken, getStoredToken, clearToken
 } from "./security/tokenManager.js";
-import { AthlpsSplashScreen } from "./components/SplashScreen.jsx";
+import { AthlosSplashScreen } from "./components/SplashScreen.jsx";
 import { AthlosBrandHeader } from "./components/AthlosBrandHeader.jsx";
 import { ColorPalettePicker } from "./components/ColorPalettePicker.jsx";
 import { BackButtonExitHandler } from "./components/BackButtonExitHandler.jsx";
@@ -32,9 +32,9 @@ import {
   PlusCircle, History, Trash2, Clock, MessageSquareHeart, X, Zap, Users, 
   Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, 
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
-  Camera, CheckSquare, CalendarPlus, Eye, Download, TrendingDown, Scale, Image,
+  Camera, Eye, Download, TrendingDown, Scale, Image,
   Swords, Target, Shield, Bike, Footprints, Mountain, Timer, Activity,
-  HeartPulse, Rows, Grip, PersonStanding
+  HeartPulse
 } from "lucide-react";
 
 // Iconos predefinidos para días de entrenamiento (admin puede elegir)
@@ -90,6 +90,9 @@ try {
   }
 } catch (err) {
   console.error("Firebase init failed:", err.message);
+}
+if (!db_cloud) {
+  console.error("⛔ Firestore not initialized — app will run in offline-only mode");
 }
 const COLLECTION_NAME = "athlos_clients";
 
@@ -603,8 +606,8 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
 
   const handleAdd = () => {
     // Solución del Botón Mágico '+'
-    const weightToUse = localW || suggestedWeight || (logs.length > 0 ? logs[0].weight : 10); 
-    const repsToUse = localR || targetRepsCalc || 10;
+    const weightToUse = localW !== "" ? localW : (suggestedWeight || (logs.length > 0 ? logs[0].weight : 10)); 
+    const repsToUse = localR !== "" ? localR : (targetRepsCalc || 10);
     onAddLog(safeName, weightToUse, repsToUse);
     setLocalW(""); 
     setLocalR(""); 
@@ -692,8 +695,8 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
           {showCalc && <PlateDisplay weight={weightToCalc} />}
         </div>
         {safeTip && (
-          <div className={`p-3 rounded-xl border flex gap-2 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : "bg-blue-50 border-blue-100"}`}>
-            <Info size={14} className={`${textAccent} shrink-0 mt-0.5`} /><p className={`text-[11px] italic leading-tight ${isAdmin ? 'text-zinc-400' : 'text-gray-700'}`}>"{safeTip}"</p>
+          <div className={`mx-6 mb-6 p-4 rounded-2xl border flex gap-3 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : "bg-blue-50 border-blue-100"}`}>
+            <Info size={16} className={`${textAccent} shrink-0 mt-0.5`} /><p className={`text-xs italic leading-relaxed ${isAdmin ? 'text-zinc-400' : 'text-gray-700'}`}>"{safeTip}"</p>
           </div>
         )}
       </div>
@@ -732,8 +735,6 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [exitAttemptTime, setExitAttemptTime] = useState(null);
   
-  const [showEditor, setShowEditor] = useState(false);
-  const [editorTab, setEditorTab] = useState("day");
   const [targetDayId, setTargetDayId] = useState("");
   const [editingClientId, setEditingClientId] = useState(null);
   const [editingDayId, setEditingDayId] = useState(null);
@@ -743,10 +744,7 @@ export default function App() {
   const [newDay, setNewDay] = useState({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" });
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [newClient, setNewClient] = useState({ name: "", username: "", password: "", sourceTemplate: "" });
-  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
-  const [templateNameInput, setTemplateNameInput] = useState("");
   const [isEditingClientRoutine, setIsEditingClientRoutine] = useState(false);
-  const [sourceClientToCopy, setSourceClientToCopy] = useState("");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [clientToDelete, setClientToDelete] = useState(null);
@@ -780,6 +778,8 @@ export default function App() {
   // Admin visual editor states
   const [adminEditingExIdx, setAdminEditingExIdx] = useState(null);
   const [showAddExercisePanel, setShowAddExercisePanel] = useState(false);
+  const [iconDropdownOpen, setIconDropdownOpen] = useState(null);
+  const [newDayIconDropdownOpen, setNewDayIconDropdownOpen] = useState(false);
 
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
@@ -843,7 +843,12 @@ export default function App() {
         lastAppliedUpdateRef.current[userId] = updateKey;
         // With Firestore persistence, setDoc queues locally offline and syncs when back online
         setIsSyncing(true);
-        setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch((err) => { console.error('❌ Firestore write error for', userId, ':', err.message); setIsSyncing(false); });
+        if (db_cloud) {
+          setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch((err) => { console.error('❌ Firestore write error for', userId, ':', err.message); setIsSyncing(false); });
+        } else {
+          console.warn('⚠️ Firestore not initialized, data saved locally only');
+          setIsSyncing(false);
+        }
       }
       
       return { ...prev, [userId]: next };
@@ -858,17 +863,6 @@ export default function App() {
     }));
     localStorage.setItem(`athlos_palette_${userId}`, paletteId);
   }, [updateUserInCloud]);
-
-  // NEW: Load user's color preference
-  const loadUserColorPreference = useCallback((userId) => {
-    const saved = localStorage.getItem(`athlos_palette_${userId}`);
-    if (saved) {
-      setPreferredPaletteId(saved);
-    } else if (db[userId]?.preferredPaletteId) {
-      setPreferredPaletteId(db[userId].preferredPaletteId);
-      localStorage.setItem(`athlos_palette_${userId}`, db[userId].preferredPaletteId);
-    }
-  }, [db]);
 
   // NEW: Save motivational phrase (admin only)
   const saveMotivationalPhrase = useCallback((phraseData) => {
@@ -919,6 +913,12 @@ export default function App() {
   // CARGA DE DATOS DE FIREBASE
   useEffect(() => {
     if (!loggedInUser) {
+      setDataLoaded(true);
+      return;
+    }
+    if (!db_cloud) {
+      console.error('⚠️ Firestore not available, using initial data only');
+      setDb(INITIAL_DB);
       setDataLoaded(true);
       return;
     }
@@ -983,10 +983,14 @@ export default function App() {
       // NEW: Load motivational phrases
       const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
       if (savedPhrases) {
-        const phrases = JSON.parse(savedPhrases);
-        setAllMotivationalPhrases(phrases);
-        if (phrases.length > 0) {
-          setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
+        try {
+          const phrases = JSON.parse(savedPhrases);
+          setAllMotivationalPhrases(phrases);
+          if (phrases.length > 0) {
+            setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
+          }
+        } catch (e) {
+          console.warn('Failed to parse motivational phrases:', e.message);
         }
       } else if (db[loggedInUser]?.motivationalPhrases) {
         setAllMotivationalPhrases(db[loggedInUser].motivationalPhrases);
@@ -1001,7 +1005,8 @@ export default function App() {
       const userExists = Object.prototype.hasOwnProperty.call(db, currentClientId);
       
       // Si la base de datos no es la inicial y el usuario no está, expulsar.
-      if (!userExists && db !== INITIAL_DB) {
+      if (!userExists && dataLoaded) {
+        clearToken();
         setLoggedInUser(null);
         setIsAdminMode(false);
         localStorage.removeItem("athlos_session_final");
@@ -1269,7 +1274,7 @@ export default function App() {
     const validatedReps = safeParseReps(reps);
     
     if (validatedWeight === 0 && validatedReps === 0) {
-      setToast({ type: "ERROR", message: "Peso o reps inv√°lidos" });
+      setToast({ type: "ERROR", message: "Peso o reps inválidos" });
       setTimeout(() => setToast(null), 2000);
       return;
     }
@@ -1281,14 +1286,14 @@ export default function App() {
     const validation = validateLogAJV(logEntry);
     if (!validation.valid) {
       console.warn("⚠️ Log validation failed:", validation.errors);
-      setToast({ type: "ERROR", message: "Datos inv√°lidos" });
+      setToast({ type: "ERROR", message: "Datos inválidos" });
       setTimeout(() => setToast(null), 2000);
       return;
     }
     
     updateUserInCloud(currentClientId, (u) => {
       const logs = u.logs || {};
-      return { ...u, logs: { ...logs, [exName]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, 15) } };
+      return { ...u, logs: { ...logs, [sanitizeInput(exName)]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, 15) } };
     });
     setToast({ type: "SUCCESS", message: `Serie registrada` }); setTimeout(() => setToast(null), 2000);
   }, [currentClientId, updateUserInCloud]);
@@ -1342,8 +1347,8 @@ export default function App() {
       setAdminResetError("Todos los campos son obligatorios");
       return;
     }
-    if (adminResetPwd.length < 4) {
-      setAdminResetError("La contraseña debe tener al menos 4 caracteres");
+    if (adminResetPwd.length < 6) {
+      setAdminResetError("La contraseña debe tener al menos 6 caracteres");
       return;
     }
     if (adminResetPwd !== adminResetPwdConfirm) {
@@ -1403,8 +1408,8 @@ export default function App() {
     const username = sanitizeInput(newClient.username).trim().toLowerCase();
     const password = newClient.password;
     
-    if (!name || !username || !password || password.length < 4) {
-      setToast({ type: "SUCCESS", message: "Datos inválidos o contraseña muy corta" }); 
+    if (!name || !username || !password || password.length < 6) {
+      setToast({ type: "ERROR", message: "Datos inválidos o contraseña muy corta (mín. 6 caracteres)" }); 
       setTimeout(() => setToast(null), 3000); 
       return;
     }
@@ -1487,15 +1492,16 @@ export default function App() {
   if (!loggedInUser) {
     return (
       <>
-        <AthlpsSplashScreen />
+        <AthlosSplashScreen />
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
           <div className="w-full max-w-sm">
-            <div className="text-center mb-12">
-              <div className="relative mx-auto mb-6 w-48 h-48">
-                <div className="absolute inset-0 bg-amber-500/15 rounded-full blur-3xl scale-150" />
-                <img src="/athlos-logo.png" alt="Athlos" className="relative w-48 h-48 object-contain drop-shadow-[0_0_35px_rgba(245,158,11,0.4)]" />
+            <div className="text-center mb-10">
+              <div className="relative mx-auto mb-3 w-56 h-56">
+                <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-3xl scale-150" />
+                <img src="/athlos-logo.png" alt="Athlos" className="relative w-56 h-56 object-contain drop-shadow-[0_0_40px_rgba(245,158,11,0.5)]" />
               </div>
-              <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-[0.3em] mt-1">Entrenamiento Premium</p>
+              <h2 className="text-amber-500 text-lg font-black tracking-tight">Entrenamiento Premium</h2>
+              <p className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">by Sebas</p>
             </div>
           <div className="space-y-4">
             <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
@@ -1628,58 +1634,31 @@ export default function App() {
                       
                       {!editingDayId ? (
                         <>
-                          <div className="grid grid-cols-2 gap-6">
-                            {(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).map((day, idx) => {
-                              const AdminDayIcon = getDayIcon(day.icon);
-                              return (
-                              <div key={day.id} className="relative group">
-                                <button onClick={() => setEditingDayId(day.id)} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-5 rounded-xl transition-all active:scale-95 text-left">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <AdminDayIcon size={18} className="text-amber-500" />
-                                    <p className="text-[9px] text-zinc-400 font-bold uppercase group-hover:text-amber-500 transition-colors">{String(day.focus || "")}</p>
-                                  </div>
-                                  <p className="text-sm font-black text-white mt-1 line-clamp-2">{String(day.title || "Día")}</p>
-                                  <p className="text-[8px] text-zinc-500 mt-2">{(Array.isArray(day.exercises) ? day.exercises : []).length} ejercicios</p>
-                                  {/* Icon selector */}
-                                  <div className="mt-3 pt-3 border-t border-zinc-700/50" onClick={e => e.stopPropagation()}>
-                                    <p className="text-[8px] text-zinc-500 font-bold uppercase mb-2">Icono del día</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {DAY_ICON_OPTIONS.map(opt => {
-                                        const OptIcon = opt.icon;
-                                        const isSelected = (day.icon || "dumbbell") === opt.id;
-                                        return (
-                                          <button key={opt.id} title={opt.label} onClick={(e) => { e.stopPropagation(); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const di = days.findIndex(d => d.id === day.id); if(di > -1) days[di] = { ...days[di], icon: opt.id }; return { ...u, workoutData: { ...u.workoutData, days } }; }); }} className={`p-1.5 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-black scale-110' : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white'}`}>
-                                            <OptIcon size={14} />
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                </button>
-                                <div className="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={(e) => { e.stopPropagation(); const newDayId = Date.now(); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const sourceDayIdx = days.findIndex(d => d.id === day.id); if(sourceDayIdx > -1) { const newDay = JSON.parse(JSON.stringify(days[sourceDayIdx])); newDay.id = newDayId; newDay.title += " (Copia)"; days.splice(sourceDayIdx + 1, 0, newDay); } return { ...u, workoutData: { ...u.workoutData, days } }; }); setToast({ type: "SUCCESS", message: "Día duplicado ✓" }); setTimeout(() => setToast(null), 2500); }} className="bg-amber-500 text-black p-1.5 rounded-lg text-[9px] font-bold hover:bg-amber-600 active:scale-90"><Plus size={12}/></button>
-                                  <button onClick={(e) => { e.stopPropagation(); removeDayFromRoutine(day.id); }} className="bg-red-500/20 text-red-500 p-1.5 rounded-lg hover:bg-red-500/30 active:scale-90"><Trash2 size={12}/></button>
-                                </div>
-                              </div>
-                            );})}
-                          </div>
-                          
+                          <p className="text-[9px] text-zinc-500 italic mb-2">Pulsa un día abajo para editarlo. Crea nuevos días aquí:</p>
                           <div className="space-y-4 bg-zinc-800/30 p-6 rounded-xl border border-zinc-700/50">
                             <input key={`newday-title-${editingClientId}`} type="text" placeholder="Nombre del día..." className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none focus:border-amber-500" value={newDay.title} onChange={e => setNewDay({...newDay, title: e.target.value})} />
                             <input key={`newday-focus-${editingClientId}`} type="text" placeholder="Focus (ej: Fuerza, Hipertrofia)..." className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none focus:border-amber-500" value={newDay.focus} onChange={e => setNewDay({...newDay, focus: e.target.value})} />
-                            <div>
-                              <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2">Icono del día</p>
-                              <div className="flex flex-wrap gap-2">
-                                {DAY_ICON_OPTIONS.map(opt => {
-                                  const NewDayOptIcon = opt.icon;
-                                  const isSelected = newDay.icon === opt.id;
-                                  return (
-                                    <button key={opt.id} type="button" title={opt.label} onClick={() => setNewDay({...newDay, icon: opt.id})} className={`p-2 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-black scale-110' : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white'}`}>
-                                      <NewDayOptIcon size={16} />
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                            <div className="relative">
+                              <button type="button" onClick={() => setNewDayIconDropdownOpen(!newDayIconDropdownOpen)} className="flex items-center gap-2 w-full text-left p-3 rounded-xl bg-zinc-800 border border-zinc-700 hover:border-zinc-600 transition-all">
+                                {(() => { const SelIcon = getDayIcon(newDay.icon); return <SelIcon size={16} className="text-amber-500" />; })()}
+                                <span className="text-[9px] text-zinc-400 font-bold uppercase flex-1">Icono: {DAY_ICON_OPTIONS.find(o => o.id === newDay.icon)?.label || 'Mancuerna'}</span>
+                                <ChevronRight size={12} className={`text-zinc-500 transition-transform ${newDayIconDropdownOpen ? 'rotate-90' : ''}`} />
+                              </button>
+                              {newDayIconDropdownOpen && (
+                                <div className="mt-2 p-2 bg-zinc-800 rounded-xl border border-zinc-700 animate-in slide-in-from-top-2 duration-200">
+                                  <div className="grid grid-cols-6 gap-2">
+                                    {DAY_ICON_OPTIONS.map(opt => {
+                                      const NewDayOptIcon = opt.icon;
+                                      const isSelected = newDay.icon === opt.id;
+                                      return (
+                                        <button key={opt.id} type="button" title={opt.label} onClick={() => { setNewDay({...newDay, icon: opt.id}); setNewDayIconDropdownOpen(false); }} className={`p-2 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-black scale-110' : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white'}`}>
+                                          <NewDayOptIcon size={16} />
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <select key={`newday-warmup-${editingClientId}`} value={newDay.warmupType} onChange={e => setNewDay({...newDay, warmupType: e.target.value})} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none">
                               <option value="warmupLower">Calentamiento Inferior</option>
@@ -1703,6 +1682,29 @@ export default function App() {
                                   <div className="flex gap-3 items-center">
                                     <input key={`dayedit-focus-${editingDayId}`} defaultValue={String(day?.focus || "")} onBlur={e => modifyDayData(editingDayId, 'focus', e.target.value)} placeholder="Focus..." className="flex-1 bg-zinc-900 px-3 py-2 rounded-xl text-xs text-zinc-300 outline-none border border-zinc-700 focus:border-amber-500" />
                                     <button onClick={() => removeDayFromRoutine(editingDayId)} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-xl text-[9px] font-bold active:scale-95 flex items-center gap-1 border border-red-500/20 hover:bg-red-500/20"><Trash2 size={12}/> Eliminar día</button>
+                                  </div>
+                                  {/* Icon dropdown */}
+                                  <div>
+                                    <button onClick={() => setIconDropdownOpen(iconDropdownOpen === editingDayId ? null : editingDayId)} className="flex items-center gap-2 w-full text-left p-2 rounded-lg bg-zinc-700/30 hover:bg-zinc-700/50 transition-all">
+                                      {(() => { const EditDayIcon = getDayIcon(day?.icon); return <EditDayIcon size={14} className="text-amber-500" />; })()}
+                                      <span className="text-[8px] text-zinc-400 font-bold uppercase flex-1">Cambiar icono</span>
+                                      <ChevronRight size={12} className={`text-zinc-500 transition-transform ${iconDropdownOpen === editingDayId ? 'rotate-90' : ''}`} />
+                                    </button>
+                                    {iconDropdownOpen === editingDayId && (
+                                      <div className="mt-2 p-2 bg-zinc-900 rounded-xl border border-zinc-700 animate-in slide-in-from-top-2 duration-200">
+                                        <div className="grid grid-cols-6 gap-1.5">
+                                          {DAY_ICON_OPTIONS.map(opt => {
+                                            const OptIcon = opt.icon;
+                                            const isSelected = (day?.icon || "dumbbell") === opt.id;
+                                            return (
+                                              <button key={opt.id} title={opt.label} onClick={() => { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const di = days.findIndex(d => d.id === editingDayId); if(di > -1) days[di] = { ...days[di], icon: opt.id }; return { ...u, workoutData: { ...u.workoutData, days } }; }); setIconDropdownOpen(null); }} className={`p-1.5 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-black scale-110' : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white'}`}>
+                                                <OptIcon size={14} />
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
 
@@ -1745,9 +1747,9 @@ export default function App() {
                                           </div>
                                         </div>
                                         {ex.tip && (
-                                          <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex gap-2 mb-4">
-                                            <Info size={14} className="text-amber-500 shrink-0 mt-0.5"/>
-                                            <p className="text-[11px] italic text-zinc-400 leading-tight">"{String(ex.tip)}"</p>
+                                          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex gap-3 mt-4">
+                                            <Info size={16} className="text-amber-500 shrink-0 mt-0.5"/>
+                                            <p className="text-xs italic text-zinc-400 leading-relaxed">"{String(ex.tip)}"</p>
                                           </div>
                                         )}
 
@@ -1856,7 +1858,7 @@ export default function App() {
               {validDays.map(day => {
                 const DayIcon = getDayIcon(day.icon);
                 return (
-                <button key={day.id} onClick={() => navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
+                <button key={day.id} onClick={() => isEditingClientRoutine ? setEditingDayId(day.id) : navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
                   <div className="flex items-center gap-4"><div className="p-4 rounded-3xl" style={palette ? { backgroundColor: `${palette.accent}15`, color: palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: '#f9fafb', color: '#6b7280' }}><DayIcon size={28}/></div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
                   <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </button>
@@ -2102,7 +2104,7 @@ export default function App() {
            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-6 space-y-4 shadow-2xl">
               <h3 className="text-amber-500 font-black uppercase text-sm text-center">Nuevo Cliente</h3>
               <input type="text" placeholder="Usuario" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.username} onChange={e=>setNewClient({...newClient, username:e.target.value})} />
-              <input type="text" placeholder="Contraseña" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
+              <input type="password" placeholder="Contraseña" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
               <input type="text" placeholder="Nombre completo" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
               <button onClick={runCreateProfile} className="w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase">CREAR CUENTA</button>
               <button onClick={()=>setShowAddClientModal(false)} className="w-full text-zinc-500 text-[10px] font-bold">CANCELAR</button>

@@ -24,7 +24,7 @@ export const sanitizeInput = (str, maxLen = 200) => {
   const limited = str.slice(0, maxLen);
   
   // Strip HTML tags to prevent injection (React escapes on render, so no entity encoding needed)
-  const stripped = limited.replace(/<[^>]*>/g, '');
+  const stripped = limited.replace(/<[^>]*>?/g, '');
   
   return stripped;
 };
