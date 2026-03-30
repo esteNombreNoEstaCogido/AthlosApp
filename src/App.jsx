@@ -1025,6 +1025,8 @@ export default function App() {
       setDataLoaded(true);
       return;
     }
+    // Reset dataLoaded para que el check de seguridad espere a onSnapshot
+    setDataLoaded(false);
     if (!db_cloud) {
       console.error('⚠️ Firestore not available, using initial data only');
       setDb(INITIAL_DB);
@@ -1128,19 +1130,35 @@ export default function App() {
   }, [loggedInUser, db]);
 
   // SOLUCIÓN DE SEGURIDAD CONTRA BUCLES INFINITOS Y PANTALLA EN BLANCO
+  // Solo expulsar si onSnapshot ya cargó datos (dataLoaded=true) y el usuario no existe en Firestore
   useEffect(() => {
     if (dataLoaded && loggedInUser && currentClientId) {
       const userExists = Object.prototype.hasOwnProperty.call(db, currentClientId);
       
-      // Si la base de datos no es la inicial y el usuario no está, expulsar.
-      if (!userExists && dataLoaded) {
-        clearToken();
-        initialSetupDoneRef.current = false;
-        setLoggedInUser(null);
-        setIsAdminMode(false);
-        localStorage.removeItem("athlos_session_final");
-        sessionStorage.removeItem("athlos_session_final");
-        setDataLoaded(false);
+      // Verificar que db tiene datos de Firestore (no solo INITIAL_DB)
+      // Si db tiene más keys que INITIAL_DB o si hay entrenador con datos cloud, los datos ya cargaron
+      if (!userExists) {
+        // Dar tiempo extra para que onSnapshot cargue en caso de red lenta
+        const timer = setTimeout(async () => {
+          // Verificar directamente en Firestore antes de expulsar
+          let existsInCloud = false;
+          if (db_cloud && navigator.onLine) {
+            try {
+              const snap = await getDoc(doc(db_cloud, COLLECTION_NAME, currentClientId));
+              existsInCloud = snap.exists();
+            } catch (e) { /* ignore */ }
+          }
+          if (!existsInCloud && !Object.prototype.hasOwnProperty.call(db, currentClientId)) {
+            clearToken();
+            initialSetupDoneRef.current = false;
+            setLoggedInUser(null);
+            setIsAdminMode(false);
+            localStorage.removeItem("athlos_session_final");
+            sessionStorage.removeItem("athlos_session_final");
+            setDataLoaded(false);
+          }
+        }, 3000);
+        return () => clearTimeout(timer);
       }
     }
   }, [dataLoaded, db, currentClientId, loggedInUser]);
