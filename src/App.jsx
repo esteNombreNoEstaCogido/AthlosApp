@@ -1131,6 +1131,11 @@ export default function App() {
   const signOutUser = () => {
     setLoggedInUser(null); 
     setIsAdminMode(false); 
+    setIsEditingClientRoutine(false);
+    setEditingClientId(null);
+    setEditingDayId(null);
+    setSelectedDay(null);
+    setActiveTab("home");
     // 🔐 Clear JWT token instead of plaintext session
     clearToken();
     // Keep old session removal for backward compatibility
@@ -1858,7 +1863,7 @@ export default function App() {
               {validDays.map(day => {
                 const DayIcon = getDayIcon(day.icon);
                 return (
-                <button key={day.id} onClick={() => isEditingClientRoutine ? setEditingDayId(day.id) : navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
+                <button key={day.id} onClick={() => (isAdminMode && isEditingClientRoutine) ? setEditingDayId(day.id) : navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
                   <div className="flex items-center gap-4"><div className="p-4 rounded-3xl" style={palette ? { backgroundColor: `${palette.accent}15`, color: palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: '#f9fafb', color: '#6b7280' }}><DayIcon size={28}/></div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
                   <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </button>
