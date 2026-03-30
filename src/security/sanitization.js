@@ -23,16 +23,26 @@ export const sanitizeInput = (str, maxLen = 200) => {
   // Limit length
   const limited = str.slice(0, maxLen);
   
-  // Escape HTML entities to prevent XSS
-  const escaped = limited.replace(/[<>\"'&]/g, (c) => ({
+  // Strip HTML tags to prevent injection (React escapes on render, so no entity encoding needed)
+  const stripped = limited.replace(/<[^>]*>/g, '');
+  
+  return stripped;
+};
+
+/**
+ * Escape HTML entities for raw HTML contexts (e.g., PDF generation)
+ * @param {string} str - Raw text
+ * @returns {string} - HTML-safe text
+ */
+export const escapeHtml = (str) => {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[<>"'&]/g, (c) => ({
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#39;',
     '&': '&amp;',
   }[c] || ''));
-  
-  return escaped;
 };
 
 /**

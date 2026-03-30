@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, memo, useRef } from "react";
 import html2pdf from "html2pdf.js";
 import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager.js";
 import { 
-  sanitizeInput, sanitizeUrl, sanitizeName, safeJSONParse 
+  sanitizeInput, sanitizeUrl, sanitizeName, safeJSONParse, escapeHtml 
 } from "./security/sanitization.js";
 import {
   safeParseWeight, safeParseReps, safeParseSerries,
@@ -17,10 +17,14 @@ import { ColorPalettePicker } from "./components/ColorPalettePicker.jsx";
 import { BackButtonExitHandler } from "./components/BackButtonExitHandler.jsx";
 import { Toast, useToast } from "./components/Toast.jsx";
 import { AdminMotivationalManager } from "./components/AdminMotivationalManager.jsx";
+import { ExerciseImageManager } from "./components/ExerciseImageManager.jsx";
+import { ProgressTracker } from "./components/ProgressTracker.jsx";
+import { PhotoComparator } from "./components/PhotoComparator.jsx";
 import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
 import { 
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc 
 } from "firebase/firestore";
 import {
@@ -28,7 +32,7 @@ import {
   PlusCircle, History, Trash2, Clock, MessageSquareHeart, X, Zap, Users, 
   Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, 
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
-  Camera, CheckSquare, CalendarPlus, Eye, Download, TrendingDown
+  Camera, CheckSquare, CalendarPlus, Eye, Download, TrendingDown, Scale, Image
 } from "lucide-react";
 
 // ==========================================
@@ -46,7 +50,15 @@ const firebaseConfig = {
 let app, db_cloud;
 try {
   app = initializeApp(firebaseConfig);
-  db_cloud = getFirestore(app);
+  try {
+    db_cloud = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+    console.log("✅ Firestore offline persistence enabled");
+  } catch (persistErr) {
+    console.warn("⚠️ Persistence init failed, falling back:", persistErr.message);
+    db_cloud = getFirestore(app);
+  }
 } catch (err) {
   console.error("Firebase init failed:", err.message);
 }
@@ -92,23 +104,24 @@ const callGeminiAPI = async (prompt) => {
 // hashPassword, validatePassword are now bcryptjs-backed
 
 const generatePDFReport = (client, days) => {
+  const esc = escapeHtml;
   const html = `
     <div style="font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5;">
       <h1 style="color: #1a1a1a; border-bottom: 3px solid #f59e0b; padding-bottom: 10px;">📋 PLAN DE ENTRENAMIENTO</h1>
-      <h2 style="color: #666;">${client.name}</h2>
-      <p style="color: #999; font-style: italic;">${client.subtitle || ''}</p>
+      <h2 style="color: #666;">${esc(client.name)}</h2>
+      <p style="color: #999; font-style: italic;">${esc(client.subtitle || '')}</p>
       <p style="color: #999; margin-bottom: 30px;"><strong>Generado:</strong> ${new Date().toLocaleDateString('es-ES')}</p>
       
       ${days.map(day => `
         <div style="background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; border-left: 4px solid #f59e0b;">
-          <h3 style="color: #1a1a1a; margin: 0 0 10px 0;">${day.title}</h3>
-          <p style="color: #666; margin: 5px 0;"><strong>Enfoque:</strong> ${day.focus || 'General'}</p>
+          <h3 style="color: #1a1a1a; margin: 0 0 10px 0;">${esc(day.title)}</h3>
+          <p style="color: #666; margin: 5px 0;"><strong>Enfoque:</strong> ${esc(day.focus || 'General')}</p>
           <h4 style="color: #888; margin-top: 10px;">Ejercicios:</h4>
           <ul style="color: #666; padding-left: 20px;">
             ${(day.exercises || []).map(ex => `
               <li style="margin: 8px 0;">
-                <strong>${ex.name}</strong> - ${ex.s} series x ${ex.r} reps
-                <br/><small style="color: #999;">Grupo: ${ex.mus} ${ex.tip ? '| Tip: ' + ex.tip : ''}</small>
+                <strong>${esc(ex.name)}</strong> - ${esc(String(ex.s))} series x ${esc(String(ex.r))} reps
+                <br/><small style="color: #999;">Grupo: ${esc(ex.mus)} ${ex.tip ? '| Tip: ' + esc(ex.tip) : ''}</small>
               </li>
             `).join('')}
           </ul>
@@ -116,7 +129,7 @@ const generatePDFReport = (client, days) => {
       `).join('')}
       
       <div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-radius: 8px;">
-        <p style="color: #666;"><strong>💡 Consejo del Coach:</strong> ${client.advice || 'Mantén la consistencia y disfruta el proceso.'}</p>
+        <p style="color: #666;"><strong>💡 Consejo del Coach:</strong> ${esc(client.advice || 'Mantén la consistencia y disfruta el proceso.')}</p>
       </div>
     </div>
   `;
@@ -135,7 +148,7 @@ const generatePDFReport = (client, days) => {
 // ==========================================
 // DATOS INICIALES - EJERCICIOS
 // ==========================================
-const GRUPOS_MUSCULARES = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Piernas', 'Glúteo', 'Core', 'Cuádriceps', 'Isquios'];
+const GRUPOS_MUSCULARES = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Piernas', 'Glúteo', 'Core', 'Cuádriceps', 'Isquios', 'Cardio', 'Movilidad'];
 
 const EJERCICIOS_PREDEFINIDOS = [
   // PECHO
@@ -144,6 +157,12 @@ const EJERCICIOS_PREDEFINIDOS = [
   { name: "Cruce de Poleas", mus: "Pecho", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=cruce+poleas" },
   { name: "Floor Press (Suelo)", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=floor+press" },
   { name: "Press Inclinado", mus: "Pecho", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado" },
+  { name: "Press Declinado", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+declinado" },
+  { name: "Aperturas con Mancuernas", mus: "Pecho", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=aperturas+mancuernas+pecho" },
+  { name: "Aperturas en Peck Deck", mus: "Pecho", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=aperturas+peck+deck" },
+  { name: "Press con Mancuernas", mus: "Pecho", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+mancuernas+pecho" },
+  { name: "Press Convergente en Máquina", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+convergente+maquina+pecho" },
+  { name: "Dips (Fondos en Paralelas)", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=fondos+paralelas+pecho" },
   
   // ESPALDA
   { name: "Remo", mus: "Espalda", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+tecnica" },
@@ -151,6 +170,11 @@ const EJERCICIOS_PREDEFINIDOS = [
   { name: "Dominadas", mus: "Espalda", img: "https://images.unsplash.com/photo-1597124514420-c6391dd34e97?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=dominadas+tecnica" },
   { name: "Pull-over", mus: "Espalda", img: "https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=pullover" },
   { name: "Jalón al Pecho", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+al+pecho" },
+  { name: "Remo con Barra", mus: "Espalda", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+barra" },
+  { name: "Remo con Mancuerna", mus: "Espalda", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+mancuerna+un+brazo" },
+  { name: "Jalón Agarre Cerrado", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+agarre+cerrado" },
+  { name: "Remo en Polea Baja", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea+baja" },
+  { name: "Peso Muerto Convencional", mus: "Espalda", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+convencional" },
   
   // HOMBROS
   { name: "Press Militar", mus: "Hombros", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar" },
@@ -158,12 +182,22 @@ const EJERCICIOS_PREDEFINIDOS = [
   { name: "Elevaciones Laterales", mus: "Hombros", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevaciones+laterales" },
   { name: "Face Pulls", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=face+pulls" },
   { name: "Retracción Escapular", mus: "Hombros", img: "https://images.unsplash.com/photo-1549576528-b0f2f33aafc5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=retraccion+escapular" },
+  { name: "Pájaros (Rear Delt Fly)", mus: "Hombros", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=pajaros+hombro+posterior" },
+  { name: "Press Arnold", mus: "Hombros", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+arnold" },
+  { name: "Elevaciones Frontales", mus: "Hombros", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevaciones+frontales" },
+  { name: "Encogimientos (Shrugs)", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=encogimientos+trapecio" },
   
   // BRAZOS
   { name: "Curl de Bíceps", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+biceps" },
   { name: "Extensiones Tríceps", mus: "Brazos", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extensiones+triceps" },
   { name: "Curl Martillo", mus: "Brazos", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+martillo" },
   { name: "Fondos en Banco", mus: "Brazos", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=fondos+en+banco" },
+  { name: "Curl Concentrado", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+concentrado" },
+  { name: "Curl con Barra Z", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+barra+z" },
+  { name: "Press Francés", mus: "Brazos", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+frances+triceps" },
+  { name: "Extensión Tríceps Polea", mus: "Brazos", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extension+triceps+polea" },
+  { name: "Curl Predicador", mus: "Brazos", img: "https://images.unsplash.com/photo-1567059884314-1812253f72c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+predicador" },
+  { name: "Patada de Tríceps", mus: "Brazos", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=patada+triceps" },
   
   // PIERNAS
   { name: "Sentadilla Normal", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+tecnica" },
@@ -171,27 +205,67 @@ const EJERCICIOS_PREDEFINIDOS = [
   { name: "Box Squat (Silla)", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=box+squat" },
   { name: "Sentadilla Búlgara", mus: "Piernas", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+bulgara" },
   { name: "Zancada", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=zancada" },
+  { name: "Peso Muerto Sumo", mus: "Piernas", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+sumo" },
+  { name: "Sentadilla Goblet", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+goblet" },
+  { name: "Step Up (Subida al Cajón)", mus: "Piernas", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=step+up+cajon" },
+  { name: "Elevación de Gemelos", mus: "Piernas", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevacion+gemelos" },
   
   // GLÚTEO
   { name: "Hip Thrust", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust" },
   { name: "Glute Bridge", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=glute+bridge" },
   { name: "Patada de Glúteo", mus: "Glúteo", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=patada+gluteo" },
   { name: "Abducción Máquina", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+gluteo" },
+  { name: "Abducciones en Polea", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abducciones+en+polea+gluteo" },
+  { name: "Hiperextensiones", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hiperextensiones+gluteo" },
+  { name: "Step Up", mus: "Glúteo", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=step+up+gluteo" },
+  { name: "Peso Muerto Rumano (Glúteo)", mus: "Glúteo", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano+gluteo" },
+  { name: "Zancada (Glúteo)", mus: "Glúteo", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=zancada+gluteo" },
+  { name: "Prensa Alta", mus: "Glúteo", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+alta+gluteo" },
+  { name: "Sentadilla Sumo", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+sumo+gluteo" },
+  { name: "Kickback en Polea", mus: "Glúteo", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=kickback+polea+gluteo" },
+  { name: "Buenos Días (Good Morning)", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=buenos+dias+ejercicio" },
   
   // CORE
   { name: "Plank (Plancha)", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=plank+perfecto" },
   { name: "Crunch", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=crunch" },
   { name: "Deadbug (Bicho Muerto)", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=deadbug" },
   { name: "Rueda Abdominal", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rueda+abdominal" },
+  { name: "Mountain Climbers", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=mountain+climbers" },
+  { name: "Elevación de Piernas", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevacion+piernas+abdominales" },
+  { name: "Pallof Press", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=pallof+press" },
+  { name: "Plancha Lateral", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=plancha+lateral" },
+  { name: "Russian Twist", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=russian+twist" },
   
   // CUÁDRICEPS
   { name: "Extensión Cuádriceps", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=extension+cuadriceps" },
   { name: "Leg Press", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=leg+press" },
+  { name: "Sentadilla Frontal", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+frontal" },
+  { name: "Hack Squat", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hack+squat" },
+  { name: "Sissy Squat", mus: "Cuádriceps", img: "https://images.unsplash.com/photo-1595078519480-bc102f8aa565?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sissy+squat" },
   
   // ISQUIOS
   { name: "Peso Muerto Rumano", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano" },
   { name: "Leg Curl", mus: "Isquios", img: "https://images.unsplash.com/photo-1598971457747-9b61f4981e91?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=leg+curl" },
   { name: "Curl Femoral Sentado", mus: "Isquios", img: "https://images.unsplash.com/photo-1598971457747-9b61f4981e91?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral" },
+  { name: "Peso Muerto con Barra", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+barra+isquios" },
+  { name: "Buenos Días con Barra", mus: "Isquios", img: "https://images.unsplash.com/photo-1598971457747-9b61f4981e91?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=good+morning+barra" },
+  
+  // CARDIO
+  { name: "Burpees", mus: "Cardio", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=burpees+tecnica" },
+  { name: "Jumping Jacks", mus: "Cardio", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jumping+jacks" },
+  { name: "Salto a Cajón (Box Jump)", mus: "Cardio", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=box+jump" },
+  { name: "Sprint en Cinta", mus: "Cardio", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sprint+cinta" },
+  { name: "Saltar la Cuerda", mus: "Cardio", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=saltar+cuerda" },
+  { name: "Remo en Máquina (Cardio)", mus: "Cardio", img: "https://images.unsplash.com/photo-1574519338703-46cc396c01db?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+maquina+cardio" },
+  { name: "Bicicleta Estática", mus: "Cardio", img: "https://images.unsplash.com/photo-1576556356529-3f0f8c9346d5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=bicicleta+estatica" },
+  
+  // MOVILIDAD
+  { name: "Cat-Cow (Gato-Camello)", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=cat+cow+movilidad" },
+  { name: "Estiramiento de Cadera", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=estiramiento+cadera" },
+  { name: "Rotación Torácica", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rotacion+toracica" },
+  { name: "Estiramiento de Hombro", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=estiramiento+hombro" },
+  { name: "Foam Rolling", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=foam+rolling" },
+  { name: "Sentadilla Profunda (Movilidad)", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=sentadilla+profunda+movilidad" },
 ];
 
 const ATHLOS_FORGE_EXERCISES = [
@@ -465,7 +539,7 @@ const calculate1RM = (weight, reps) => {
   return w * (1 + (parseInt(reps) || 1) / 30);
 };
 
-const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, dayId, accentColor, onAddExerciseNote, exerciseNotes }) => {
+const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, accentColor, onAddExerciseNote, exerciseNotes }) => {
   const [localW, setLocalW] = useState("");
   const [localR, setLocalR] = useState("");
   const [showCalc, setShowCalc] = useState(false);
@@ -513,7 +587,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
       <div className="relative h-52 bg-zinc-800 group">
         <img src={ex?.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
-        {isAdmin && <button onClick={() => fileRef.current.click()} className="absolute top-4 left-4 bg-black/60 p-2 rounded-xl text-white"><Camera size={18} /><input type="file" ref={fileRef} className="hidden" onChange={e => {
+        {isAdmin && <button onClick={() => onOpenImageManager ? onOpenImageManager(dayId, safeName) : fileRef.current.click()} className="absolute top-4 left-4 bg-black/60 p-2 rounded-xl text-white flex items-center gap-1"><Camera size={18} /><span className="text-[8px] font-bold">Modificar</span><input type="file" ref={fileRef} className="hidden" onChange={e => {
              const file = e.target.files[0];
              const reader = new FileReader();
              reader.onload = (ev) => onUpdateImage(dayId, safeName, ev.target.result);
@@ -670,6 +744,14 @@ export default function App() {
   // Client: settings panel
   const [showClientSettings, setShowClientSettings] = useState(false);
 
+  // Image Manager modal
+  const [imageManagerOpen, setImageManagerOpen] = useState(false);
+  const [imageManagerTarget, setImageManagerTarget] = useState({ dayId: null, exName: '' });
+  
+  // Admin visual editor states
+  const [adminEditingExIdx, setAdminEditingExIdx] = useState(null);
+  const [showAddExercisePanel, setShowAddExercisePanel] = useState(false);
+
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
   const lastAppliedUpdateRef = useRef({});
@@ -730,10 +812,9 @@ export default function App() {
       
       if (lastAppliedUpdateRef.current[userId] !== updateKey) {
         lastAppliedUpdateRef.current[userId] = updateKey;
-        if (navigator.onLine) {
-          setIsSyncing(true);
-          setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch(() => setIsSyncing(false));
-        }
+        // With Firestore persistence, setDoc queues locally offline and syncs when back online
+        setIsSyncing(true);
+        setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch((err) => { console.error('❌ Firestore write error for', userId, ':', err.message); setIsSyncing(false); });
       }
       
       return { ...prev, [userId]: next };
@@ -796,14 +877,14 @@ export default function App() {
   // Liberar bloqueo de login cuando expira
   useEffect(() => {
     if (!loginLockedUntil) return;
-    const timer = setTimeout(() => {
+    const timer = setInterval(() => {
       if (Date.now() >= loginLockedUntil) {
         setLoginLockedUntil(null);
         setLoginAttempts(0);
         setLoginError("Intenta de nuevo");
       }
     }, 1000);
-    return () => clearTimeout(timer);
+    return () => clearInterval(timer);
   }, [loginLockedUntil]);
 
   // CARGA DE DATOS DE FIREBASE
@@ -812,10 +893,7 @@ export default function App() {
       setDataLoaded(true);
       return;
     }
-    if (!navigator.onLine) {
-      setDataLoaded(true);
-      return;
-    }
+    // With Firestore persistence enabled, onSnapshot serves cached data offline
     const unsub = onSnapshot(collection(db_cloud, COLLECTION_NAME), (snap) => {
       const cloud = {};
       snap.forEach(d => { cloud[d.id] = d.data(); });
@@ -856,6 +934,8 @@ export default function App() {
     setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
     setSelectedExerciseTemplate("");
     setSelectedMusculoGroup("");
+    setAdminEditingExIdx(null);
+    setShowAddExercisePanel(false);
   }, [editingDayId]);
 
   useEffect(() => {
@@ -914,10 +994,20 @@ export default function App() {
     const input = loginUser.toLowerCase().trim();
     if (!input) return;
     try {
-      let user = db[input] || INITIAL_DB[input];
-      if (navigator.onLine && !user) {
-         const snap = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
-         if (snap.exists()) user = snap.data();
+      let user = null;
+      // 🔐 Siempre obtener datos más recientes de Firestore al estar online
+      // Esto asegura que las contraseñas cambiadas/reseteadas se reconozcan
+      if (navigator.onLine) {
+         try {
+           const snap = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
+           if (snap.exists()) user = snap.data();
+         } catch (fetchErr) {
+           console.warn("Error fetching from Firestore, using local data:", fetchErr.message);
+         }
+      }
+      // Fallback a datos locales si Firestore no disponible
+      if (!user) {
+        user = db[input] || INITIAL_DB[input];
       }
       
       // 🔐 Secure password verification using bcryptjs
@@ -930,10 +1020,11 @@ export default function App() {
         setCurrentClientId(input);
         setIsAdminMode(isAdmin);
         
-        // 🔐 Generate and store JWT token (24h expiration)
+        // 🔐 Generate and store JWT token
         try {
-          const token = await generateToken(input, 24); // 24 hour expiration
-          storeToken(token);
+          const tokenHours = keepLoggedIn ? 720 : 24; // 30 days if keep session, 24h otherwise
+          const token = await generateToken(input, tokenHours);
+          storeToken(token, keepLoggedIn);
           setLoginError(""); // Clear any error
         } catch (tokenError) {
           console.warn("⚠️ Token generation warning:", tokenError.message);
@@ -1030,6 +1121,9 @@ export default function App() {
         // 🔐 Validated sanitization based on field type
         if (field === 'yt') {
           sanitized = sanitizeUrl(val);
+        } else if (field === 'img') {
+          // Images: validate URL or allow base64 data URLs
+          sanitized = (val && (val.startsWith('data:image/') || val.startsWith('http://') || val.startsWith('https://') || val.startsWith('/'))) ? val : '';
         } else if (field === 's') {
           // Series: 1-10 range
           sanitized = safeParseSerries(val);
@@ -1062,7 +1156,8 @@ export default function App() {
   };
 
   const removeDayFromRoutine = (dayId) => {
-    updateUserInCloud(currentClientId, u => {
+    const targetClientId = editingClientId || currentClientId;
+    updateUserInCloud(targetClientId, u => {
       const days = Array.isArray(u.workoutData?.days) ? u.workoutData.days : [];
       const filtered = days.filter(d => d.id !== dayId);
       return { ...u, workoutData: { ...u.workoutData, days: filtered } };
@@ -1245,7 +1340,8 @@ export default function App() {
   const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); window.scrollTo(0,0); };
 
   const updateImageHook = useCallback((dayId, exName, newImgBase64) => {
-    updateUserInCloud(currentClientId, (u) => {
+    const targetClientId = editingClientId || currentClientId;
+    updateUserInCloud(targetClientId, (u) => {
       const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])];
       const dIdx = days.findIndex(d => d.id === dayId);
       if (dIdx !== -1) {
@@ -1255,6 +1351,22 @@ export default function App() {
       }
       return { ...u, workoutData: { ...u.workoutData, days } };
     });
+  }, [editingClientId, currentClientId, updateUserInCloud]);
+
+  // Body metrics stats (weight, body fat, bone mass)
+  const addUserStats = useCallback(async (entry) => {
+    updateUserInCloud(currentClientId, u => ({
+      ...u,
+      userStats: [...(Array.isArray(u.userStats) ? u.userStats : []), entry]
+    }));
+  }, [currentClientId, updateUserInCloud]);
+
+  // Progress photos (before/after 3 angles)
+  const addProgressPhotos = useCallback(async (entry) => {
+    updateUserInCloud(currentClientId, u => ({
+      ...u,
+      progressPhotos: [...(Array.isArray(u.progressPhotos) ? u.progressPhotos : []), entry]
+    }));
   }, [currentClientId, updateUserInCloud]);
 
   const runCreateProfile = async () => {
@@ -1295,60 +1407,43 @@ export default function App() {
     return () => clearInterval(interval);
   }, [sessionStart]);
 
-  // Manejo del botón atrás del dispositivo/navegador
-  useEffect(() => {
-    const handlePopState = () => {
-      // Si estamos en la vista de un día, volver al home
-      if (activeTab === "day") {
-        setActiveTab("home");
-        setSelectedDay(null);
-      } else if (activeTab === "home" && !isAdminMode && !loggedInUser) {
-        // Ya estamos en login, dejar que se salga
-        return;
-      } else if (activeTab === "home" && !isAdminMode) {
-        // En home: mostrar aviso y esperar segundo intento
-        const now = Date.now();
-        if (exitAttemptTime && now - exitAttemptTime < 2000) {
-          // Segundo intento dentro de 2 segundos: salir
-          setToast({ type: "INFO", message: "¡Hasta pronto! 👋" });
-          setTimeout(() => window.history.back(), 500);
-        } else {
-          // Primer intento: mostrar aviso
-          setExitAttemptTime(now);
-          setToast({ type: "WARNING", message: "Presiona atrás otra vez para salir" });
-          setTimeout(() => setExitAttemptTime(null), 2500);
-          window.history.forward(); // Prevenir que se salga en el primer intento
-        }
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [activeTab, isAdminMode, loggedInUser, exitAttemptTime]);
-
-
   const finishSession = () => { 
     const h = Math.floor(sessionElapsed / 3600), m = Math.floor((sessionElapsed % 3600) / 60);
     setToast({ type: "SUCCESS", message: `¡COMPLETADO EN ${h>0?h+'h ':''}${m}m! 🎉` }); 
     setSessionStart(null); setTimeout(() => setToast(null), 4000); navigateTo("home"); 
   };
 
+  // Manejo unificado del botón atrás (web only — native uses BackButtonExitHandler)
   useEffect(() => {
+    const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+    if (isNative) return;
+
     window.history.replaceState({ tab: "home" }, "");
     const handlePopState = (e) => {
       if (!loggedInUser) return;
-      if (e.state && e.state.tab !== 'home') { setActiveTab(e.state.tab); } else {
-        const now = Date.now();
-        if (now - lastBackPress.current < 2000) window.history.back(); 
-        else {
-          lastBackPress.current = now; setShowExitToast(true); setTimeout(() => setShowExitToast(false), 2000);
-          window.history.pushState({ tab: "home" }, ""); setActiveTab("home"); setSelectedDay(null);
-        }
+      // Si estamos en la vista de un día, volver al home
+      if (activeTab === "day") {
+        setActiveTab("home");
+        setSelectedDay(null);
+        window.history.pushState({ tab: "home" }, "");
+        return;
+      }
+      // En home: doble-tap para salir
+      const now = Date.now();
+      if (now - lastBackPress.current < 2000) {
+        window.history.back();
+      } else {
+        lastBackPress.current = now;
+        setShowExitToast(true); 
+        setTimeout(() => setShowExitToast(false), 2000);
+        window.history.pushState({ tab: "home" }, "");
+        setActiveTab("home"); 
+        setSelectedDay(null);
       }
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [loggedInUser]);
+  }, [loggedInUser, activeTab]);
 
   useEffect(() => {
     if (db[currentClientId]?.workoutData?.days?.length > 0) {
@@ -1367,13 +1462,10 @@ export default function App() {
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
           <div className="w-full max-w-sm">
             <div className="text-center mb-12">
-              <div className="relative mx-auto mb-5 w-16 h-16">
-                <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-xl" />
-                <div className="relative flex items-center justify-center w-16 h-16 bg-amber-500/10 rounded-full border border-amber-500/30">
-                  <span className="text-3xl">⚡</span>
-                </div>
+              <div className="relative mx-auto mb-4 w-32 h-32">
+                <div className="absolute inset-0 bg-amber-500/15 rounded-full blur-3xl scale-150" />
+                <img src="/athlos-logo.png" alt="Athlos" className="relative w-32 h-32 object-contain drop-shadow-[0_0_25px_rgba(245,158,11,0.3)]" />
               </div>
-              <h1 className="text-4xl font-black tracking-tighter">ATHLOS</h1>
               <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-[0.3em] mt-1">Entrenamiento Premium</p>
             </div>
           <div className="space-y-4">
@@ -1383,7 +1475,7 @@ export default function App() {
             {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
             <button onClick={authenticate} className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4">Acceder</button>
           </div>
-          <p className="text-center text-zinc-700 text-[9px] mt-10">Athlos &copy; {new Date().getFullYear()}</p>
+          <p className="text-center text-zinc-700 text-[9px] mt-10">Desarrollado por Sebas &copy; {new Date().getFullYear()}</p>
         </div>
       </div>
       </>
@@ -1406,7 +1498,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
-      <div className={`max-w-md mx-auto p-6 pb-32 ${isAdminMode ? 'bg-black text-white' : ''}`}>
+      <BackButtonExitHandler
+        isEnabled={!!loggedInUser}
+        canGoBack={selectedDay !== null || activeTab !== "home"}
+        onNavigateBack={() => {
+          if (selectedDay !== null) { setSelectedDay(null); }
+          else { navigateTo("home"); }
+        }}
+        onExit={() => signOutUser()}
+      />
+      <div className={`max-w-md mx-auto p-6 pb-40 ${isAdminMode ? 'bg-black text-white' : ''}`}>
         <div className="flex justify-between items-center mb-6">
            <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-[9px] font-black uppercase" style={palette ? { color: `${palette.text}80` } : { color: '#a1a1aa' }}>{isOnline ? 'Online' : 'Offline'}</span></div>
            <div className="flex gap-2">
@@ -1419,11 +1520,6 @@ export default function App() {
 
         {activeTab === "home" && (
           <div className="space-y-8 animate-in fade-in duration-500">
-            {/* NEW: Back Button Exit Handler */}
-            <BackButtonExitHandler 
-              isEnabled={!isAdminMode}
-              onExit={() => signOutUser()}
-            />
             
             {/* NEW: Athlos Premium Brand Header with Logo & Daily Phrase */}
             <AthlosBrandHeader 
@@ -1531,104 +1627,154 @@ export default function App() {
                           </div>
                         </>
                       ) : (
-                        /* EDITAR EJERCICIOS DEL DÍA */
-                        <div className="space-y-4">
+                        /* VISTA VISUAL DE EJERCICIOS DEL DÍA - Misma vista que el cliente */
+                        <div className="space-y-6">
                           {(() => {
                             const day = db[editingClientId].workoutData?.days?.find(d => d.id === editingDayId);
+                            const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
                             return (
                               <>
-                                <div className="bg-zinc-800/50 p-6 rounded-xl border border-zinc-700 space-y-4">
-                                  <h5 className="font-black text-white text-sm">{String(day?.title || "Día")}</h5>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <input key={`dayedit-focus-${editingDayId}`} defaultValue={String(day?.focus || "")} onBlur={e => modifyDayData(editingDayId, 'focus', e.target.value)} placeholder="Focus..." className="bg-zinc-900 p-2 rounded text-xs text-white outline-none" />
-                                    <button onClick={() => removeDayFromRoutine(editingDayId)} className="bg-red-500/10 text-red-500 text-[9px] font-bold rounded active:scale-95 flex items-center justify-center gap-1"><Trash2 size={14}/> Eliminar</button>
+                                {/* Header del día con edición inline */}
+                                <div className="bg-zinc-800/80 p-5 rounded-2xl border border-zinc-700 space-y-3">
+                                  <input key={`dayedit-title-${editingDayId}`} defaultValue={String(day?.title || "")} onBlur={e => modifyDayData(editingDayId, 'title', e.target.value)} className="w-full bg-transparent text-white text-lg font-black outline-none border-b border-zinc-600 pb-2 focus:border-amber-500 transition-colors" placeholder="Nombre del día..." />
+                                  <div className="flex gap-3 items-center">
+                                    <input key={`dayedit-focus-${editingDayId}`} defaultValue={String(day?.focus || "")} onBlur={e => modifyDayData(editingDayId, 'focus', e.target.value)} placeholder="Focus..." className="flex-1 bg-zinc-900 px-3 py-2 rounded-xl text-xs text-zinc-300 outline-none border border-zinc-700 focus:border-amber-500" />
+                                    <button onClick={() => removeDayFromRoutine(editingDayId)} className="bg-red-500/10 text-red-400 px-3 py-2 rounded-xl text-[9px] font-bold active:scale-95 flex items-center gap-1 border border-red-500/20 hover:bg-red-500/20"><Trash2 size={12}/> Eliminar día</button>
                                   </div>
                                 </div>
 
-                                <div className="space-y-4 mt-6">
-                                  <h5 className="text-[10px] font-black uppercase text-zinc-400">Ejercicios ({(Array.isArray(day?.exercises) ? day.exercises : []).length})</h5>
-                                  {(Array.isArray(day?.exercises) ? day.exercises : []).map((ex, idx) => (
-                                    <div key={idx} className="bg-zinc-800/70 p-5 rounded-xl border border-zinc-700/50 space-y-4 group">
-                                      <div className="flex justify-between items-start gap-2">
-                                        <input key={`ex-name-${editingDayId}-${idx}`} defaultValue={String(ex.name || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'name', e.target.value)} className="flex-1 bg-zinc-900 p-2 rounded font-bold text-white text-sm outline-none" />
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          {idx > 0 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx-1], exes[idx]] = [exes[idx], exes[idx-1]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="text-zinc-400 hover:text-amber-500 active:scale-90"><ArrowLeft size={14}/></button>}
-                                          {idx < (day?.exercises?.length || 0) - 1 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx], exes[idx+1]] = [exes[idx+1], exes[idx]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="text-zinc-400 hover:text-amber-500 active:scale-90"><ChevronRight size={14}/></button>}
-                                          <button onClick={() => removeExerciseFromDay(editingDayId, idx)} className="text-red-400 hover:text-red-500 active:scale-90"><Trash2 size={14}/></button>
+                                {/* Ejercicios en formato visual (como las ve el cliente) */}
+                                <div className="space-y-6">
+                                  {exercises.map((ex, idx) => (
+                                    <div key={idx} className="bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg">
+                                      {/* Imagen del ejercicio */}
+                                      <div className="relative h-44 bg-zinc-800">
+                                        <img src={ex.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
+                                        {/* Controles del ejercicio */}
+                                        <div className="absolute top-3 left-3 flex gap-2">
+                                          <button onClick={() => { setImageManagerTarget({ dayId: editingDayId, exName: ex.name }); setImageManagerOpen(true); }} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-white flex items-center gap-1 active:scale-95"><Camera size={14}/><span className="text-[8px] font-bold">Imagen</span></button>
                                         </div>
+                                        <div className="absolute top-3 right-3 flex gap-1.5">
+                                          {idx > 0 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx-1], exes[idx]] = [exes[idx], exes[idx-1]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ArrowLeft size={14}/></button>}
+                                          {idx < exercises.length - 1 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx], exes[idx+1]] = [exes[idx+1], exes[idx]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ChevronRight size={14}/></button>}
+                                          <button onClick={() => setAdminEditingExIdx(adminEditingExIdx === idx ? null : idx)} className={`backdrop-blur-sm p-2 rounded-xl active:scale-90 ${adminEditingExIdx === idx ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}><Edit3 size={14}/></button>
+                                          <button onClick={() => removeExerciseFromDay(editingDayId, idx)} className="bg-red-500/80 backdrop-blur-sm p-2 rounded-xl text-white active:scale-90"><Trash2 size={14}/></button>
+                                        </div>
+                                        {/* Info del ejercicio sobre la imagen */}
+                                        <div className="absolute bottom-3 left-4 text-white">
+                                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-black inline-block mb-1">{String(ex.mus || "Fuerza")}</span>
+                                          <h4 className="text-lg font-black leading-tight">{String(ex.name || "")}</h4>
+                                        </div>
+                                        {ex.yt && <a href={ex.yt} target="_blank" rel="noreferrer" className="absolute bottom-3 right-4 bg-white/20 p-2.5 rounded-xl text-white hover:bg-red-500 transition-colors"><Youtube size={18}/></a>}
                                       </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Series</label>
-                                          <input type="number" key={`ex-s-${editingDayId}-${idx}`} defaultValue={String(ex.s || 3)} onBlur={e => modifyExerciseData(editingDayId, idx, 's', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none" />
+
+                                      {/* Info rápida: Series y Reps */}
+                                      <div className="p-5">
+                                        <div className="grid grid-cols-2 gap-3 mb-4">
+                                          <div className="bg-zinc-800 p-3 rounded-xl text-center">
+                                            <p className="text-[9px] text-zinc-500 font-bold uppercase">Series</p>
+                                            <p className="text-xl font-black text-amber-500">{String(ex.s || 3)}</p>
+                                          </div>
+                                          <div className="bg-zinc-800 p-3 rounded-xl text-center">
+                                            <p className="text-[9px] text-zinc-500 font-bold uppercase">Reps</p>
+                                            <p className="text-xl font-black text-amber-500">{String(ex.r || "12")}</p>
+                                          </div>
                                         </div>
-                                        <div>
-                                          <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Reps</label>
-                                          <input key={`ex-r-${editingDayId}-${idx}`} defaultValue={String(ex.r || "12")} onBlur={e => modifyExerciseData(editingDayId, idx, 'r', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none" />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Grupo</label>
-                                          <input key={`ex-mus-${editingDayId}-${idx}`} defaultValue={String(ex.mus || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'mus', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none" />
-                                        </div>
-                                        <div>
-                                          <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Link YouTube</label>
-                                          <input key={`ex-yt-${editingDayId}-${idx}`} defaultValue={String(ex.yt || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'yt', e.target.value)} placeholder="https://..." className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none" />
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <label className="text-[8px] text-zinc-500 uppercase font-bold block mb-1">Tip / Consejo</label>
-                                        <textarea key={`ex-tip-${editingDayId}-${idx}`} defaultValue={String(ex.tip || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'tip', e.target.value)} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none" rows="2" />
+                                        {ex.tip && (
+                                          <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex gap-2 mb-4">
+                                            <Info size={14} className="text-amber-500 shrink-0 mt-0.5"/>
+                                            <p className="text-[11px] italic text-zinc-400 leading-tight">"{String(ex.tip)}"</p>
+                                          </div>
+                                        )}
+
+                                        {/* Panel de edición expandible */}
+                                        {adminEditingExIdx === idx && (
+                                          <div className="mt-4 pt-4 border-t border-zinc-700 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                                            <div>
+                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Nombre</label>
+                                              <input key={`ex-name-${editingDayId}-${idx}`} defaultValue={String(ex.name || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'name', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl font-bold text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                              <div>
+                                                <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Series</label>
+                                                <input type="number" key={`ex-s-${editingDayId}-${idx}`} defaultValue={String(ex.s || 3)} onBlur={e => modifyExerciseData(editingDayId, idx, 's', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
+                                              </div>
+                                              <div>
+                                                <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Reps</label>
+                                                <input key={`ex-r-${editingDayId}-${idx}`} defaultValue={String(ex.r || "12")} onBlur={e => modifyExerciseData(editingDayId, idx, 'r', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Grupo muscular</label>
+                                              <input key={`ex-mus-${editingDayId}-${idx}`} defaultValue={String(ex.mus || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'mus', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" />
+                                            </div>
+                                            <div>
+                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Link YouTube</label>
+                                              <input key={`ex-yt-${editingDayId}-${idx}`} defaultValue={String(ex.yt || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'yt', e.target.value)} placeholder="https://..." className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" />
+                                            </div>
+                                            <div>
+                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Tip / Consejo</label>
+                                              <textarea key={`ex-tip-${editingDayId}-${idx}`} defaultValue={String(ex.tip || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'tip', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" rows="2" />
+                                            </div>
+                                            <button onClick={() => setAdminEditingExIdx(null)} className="w-full bg-amber-500 text-black font-black py-2.5 rounded-xl text-[10px] uppercase active:scale-95">✓ Listo</button>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   ))}
                                 </div>
 
-                                {/* AGREGAR EJERCICIO */}
-                                <div className="bg-zinc-800 p-6 rounded-xl border border-zinc-700 space-y-4 mt-8">
-                                  <h5 className="text-[10px] font-black uppercase text-zinc-400">Nuevo Ejercicio</h5>
-                                  <div className="space-y-3">
-                                    <label className="text-[9px] text-zinc-500 font-bold block">Selecciona de predefinidos:</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <button onClick={() => setSelectedMusculoGroup('')} className={`text-[9px] font-bold p-2 rounded border transition-all ${selectedMusculoGroup === '' ? 'bg-amber-500 text-black border-amber-600' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>Estándar</button>
-                                      <button onClick={() => { setSelectedMusculoGroup('ATHLOS'); setSelectedExerciseTemplate(""); }} className={`text-[9px] font-bold p-2 rounded border transition-all ${selectedMusculoGroup === 'ATHLOS' ? 'bg-green-600 text-white border-green-700' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>🔥 ATHLOS</button>
+                                {/* BOTÓN AÑADIR EJERCICIO */}
+                                <button onClick={() => setShowAddExercisePanel(!showAddExercisePanel)} className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all border-2 border-dashed ${showAddExercisePanel ? 'bg-amber-500 text-black border-amber-500' : 'bg-zinc-900 text-amber-500 border-amber-500/30 hover:border-amber-500/60'}`}>
+                                  <Plus size={16}/> Añadir Ejercicio
+                                </button>
+
+                                {/* Panel de selección de ejercicio */}
+                                {showAddExercisePanel && (
+                                  <div className="bg-zinc-800/90 backdrop-blur-sm p-6 rounded-2xl border border-zinc-700 space-y-4 animate-in slide-in-from-bottom-4 duration-300">
+                                    {/* Filtro por grupo muscular - visual con chips */}
+                                    <div className="flex flex-wrap gap-2">
+                                      {GRUPOS_MUSCULARES.map(g => (
+                                        <button key={g} onClick={() => { setSelectedMusculoGroup(g); setSelectedExerciseTemplate(""); }} className={`text-[9px] font-bold px-3 py-1.5 rounded-full transition-all active:scale-95 ${selectedMusculoGroup === g ? 'bg-amber-500 text-black' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}>{g}</button>
+                                      ))}
                                     </div>
-                                    {selectedMusculoGroup !== 'ATHLOS' ? (
-                                      <>
-                                        <select value={selectedMusculoGroup} onChange={e => { setSelectedMusculoGroup(e.target.value); setSelectedExerciseTemplate(""); }} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700">
-                                          <option value="">-- Elige grupo muscular --</option>
-                                          {GRUPOS_MUSCULARES.map(g => <option key={g} value={g}>{g}</option>)}
-                                        </select>
-                                        {selectedMusculoGroup && (
-                                          <select value={selectedExerciseTemplate} onChange={e => selectExerciseTemplate(e.target.value, false)} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700">
-                                            <option value="">-- Escoge ejercicio --</option>
-                                            {getExercisesByMuscleGroup(selectedMusculoGroup, EJERCICIOS_PREDEFINIDOS).map(ex => <option key={ex.name} value={ex.name}>{ex.name}</option>)}
-                                          </select>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <select value={selectedExerciseTemplate} onChange={e => { selectExerciseTemplate(e.target.value, true); }} className="w-full bg-green-900 p-2 rounded text-white text-xs outline-none border border-green-700">
-                                        <option value="">-- Escoge ejercicio ATHLOS --</option>
-                                        {ATHLOS_FORGE_EXERCISES.map(ex => <option key={ex.name} value={ex.name}>{ex.name} ({ex.mus})</option>)}
-                                      </select>
+
+                                    {/* Grid visual de ejercicios disponibles */}
+                                    {selectedMusculoGroup && (
+                                      <div className="space-y-3 max-h-80 overflow-y-auto">
+                                        {[...EJERCICIOS_PREDEFINIDOS, ...ATHLOS_FORGE_EXERCISES].filter(e => e.mus === selectedMusculoGroup).filter((e, i, arr) => arr.findIndex(x => x.name === e.name) === i).map(tmpl => (
+                                          <button key={tmpl.name} onClick={() => {
+                                            const tip = tmpl.coaching || tmpl.tip || "";
+                                            const exToAdd = { name: tmpl.name, s: 3, r: "12", tip: tip, mus: tmpl.mus, yt: tmpl.yt, img: tmpl.img };
+                                            updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...exToAdd, name: sanitizeInput(exToAdd.name), mus: sanitizeInput(exToAdd.mus), tip: sanitizeInput(exToAdd.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; });
+                                            showSuccess("Ejercicio agregado ✓");
+                                          }} className="w-full flex items-center gap-3 bg-zinc-900 p-3 rounded-xl border border-zinc-700 hover:border-amber-500/50 active:scale-[0.98] transition-all text-left">
+                                            <img src={tmpl.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" loading="lazy" />
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-sm font-bold text-white truncate">{tmpl.name}</p>
+                                              <p className="text-[9px] text-zinc-500">{tmpl.coaching || tmpl.mus}</p>
+                                            </div>
+                                            <Plus size={18} className="text-amber-500 shrink-0"/>
+                                          </button>
+                                        ))}
+                                      </div>
                                     )}
-                                  </div>
-                                  {newEx.img && (
-                                    <div className="text-center">
-                                      <img src={newEx.img} alt={newEx.name} className="w-full h-24 object-cover rounded-lg" loading="lazy" decoding="async" />
+
+                                    {/* Ejercicio personalizado */}
+                                    <div className="border-t border-zinc-700 pt-4 space-y-3">
+                                      <p className="text-[9px] text-zinc-500 font-bold uppercase">O crea uno personalizado:</p>
+                                      <input type="text" placeholder="Nombre del ejercicio..." maxLength="50" className="w-full bg-zinc-900 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} />
+                                      <div className="grid grid-cols-3 gap-2">
+                                        <input type="number" placeholder="Series" value={newEx.s} onChange={e => setNewEx({...newEx, s: parseInt(e.target.value) || 3})} className="bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700 text-center" />
+                                        <input type="text" placeholder="Reps" value={newEx.r} onChange={e => setNewEx({...newEx, r: e.target.value})} className="bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700 text-center" />
+                                        <input type="text" placeholder="Grupo" value={newEx.mus} onChange={e => setNewEx({...newEx, mus: e.target.value})} maxLength="30" className="bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700 text-center" />
+                                      </div>
+                                      <input type="text" placeholder="Tip / Consejo" value={newEx.tip} onChange={e => setNewEx({...newEx, tip: e.target.value})} maxLength="100" className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700" />
+                                      <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); showSuccess("Ejercicio agregado ✓"); } }} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Añadir personalizado</button>
                                     </div>
-                                  )}
-                                  <input key={`newex-name-${editingDayId}`} type="text" placeholder="Nombre..." maxLength="50" className="w-full bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} />
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <input type="number" placeholder="Series" value={newEx.s} onChange={e => setNewEx({...newEx, s: parseInt(e.target.value) || 3})} className="bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" />
-                                    <input type="text" placeholder="Reps (ej: 10-12)" value={newEx.r} onChange={e => setNewEx({...newEx, r: e.target.value})} className="bg-zinc-900 p-2 rounded text-white text-sm outline-none border border-zinc-700" />
                                   </div>
-                                  <input type="text" placeholder="Grupo muscular" value={newEx.mus} onChange={e => setNewEx({...newEx, mus: e.target.value})} maxLength="30" className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700" />
-                                  <input type="text" placeholder="Link YouTube" value={newEx.yt} onChange={e => setNewEx({...newEx, yt: sanitizeUrl(e.target.value)})} className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700" />
-                                  <textarea placeholder="Tip/Consejo" value={newEx.tip} onChange={e => setNewEx({...newEx, tip: e.target.value})} maxLength="100" className="w-full bg-zinc-900 p-2 rounded text-white text-xs outline-none border border-zinc-700" rows="2" />
-                                  <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); setToast({ type: "SUCCESS", message: "Ejercicio agregado ✓" }); setTimeout(() => setToast(null), 2500); } }} className="w-full bg-amber-500 text-black font-black py-2 rounded-lg text-[9px] uppercase active:scale-95">+ Añadir Ejercicio</button>
-                                </div>
+                                )}
                               </>
                             );
                           })()}
@@ -1696,9 +1842,9 @@ export default function App() {
               </div>
             )}
             <div className="space-y-4">
-              {(Array.isArray(selectedDay.exercises) ? selectedDay.exercises : []).map((ex, i) => (
-                <ExerciseCard key={i} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} dayId={selectedDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} />
-              ))}
+              {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; return (Array.isArray(liveDay.exercises) ? liveDay.exercises : []).map((ex, i) => (
+                <ExerciseCard key={`${liveDay.id}-${i}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={(dayId, exName) => { setImageManagerTarget({ dayId, exName }); setImageManagerOpen(true); }} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} />
+              )); })()}
             </div>
           </div>
         )}
@@ -1754,13 +1900,33 @@ export default function App() {
           </div>
         )}
 
+        {/* --- MI PROGRESO --- */}
+        {activeTab === "progress" && (
+          <div className="space-y-8 animate-in fade-in duration-500 mt-4">
+            <h2 className="text-2xl font-black">Mi Progreso</h2>
+            <ProgressTracker
+              stats={Array.isArray(client.userStats) ? client.userStats : []}
+              onAddStats={addUserStats}
+              palette={palette}
+              isAdmin={isAdminMode}
+            />
+            <div className="h-px" style={{ backgroundColor: `${palette?.text || '#fff'}10` }}/>
+            <PhotoComparator
+              progressPhotos={Array.isArray(client.progressPhotos) ? client.progressPhotos : []}
+              onSavePhotos={addProgressPhotos}
+              palette={palette}
+            />
+          </div>
+        )}
+
       </div>
 
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 backdrop-blur-md border px-8 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-8 z-50" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}20` } : isAdminMode ? { backgroundColor: '#18181bee', borderColor: '#27272a' } : { backgroundColor: '#ffffffee', borderColor: '#f3f4f6' }}>
-        <button onClick={() => navigateTo("home")} className="transition-all" style={activeTab === "home" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={24} /></button>
-        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className="transition-all" style={activeTab === "day" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={24} /></button>
-        <button onClick={() => navigateTo("stats")} className="transition-all" style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={24} /></button>
-        <button onClick={() => navigateTo("journal")} className="transition-all" style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={24} /></button>
+      <nav className="fixed bottom-14 left-1/2 -translate-x-1/2 backdrop-blur-md border px-6 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-6 z-50" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}20` } : isAdminMode ? { backgroundColor: '#18181bee', borderColor: '#27272a' } : { backgroundColor: '#ffffffee', borderColor: '#f3f4f6' }}>
+        <button onClick={() => navigateTo("home")} className="transition-all" style={activeTab === "home" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={22} /></button>
+        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className="transition-all" style={activeTab === "day" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={22} /></button>
+        <button onClick={() => navigateTo("stats")} className="transition-all" style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={22} /></button>
+        <button onClick={() => navigateTo("progress")} className="transition-all" style={activeTab === "progress" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Scale size={22} /></button>
+        <button onClick={() => navigateTo("journal")} className="transition-all" style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={22} /></button>
       </nav>
 
       {/* --- MODALES --- */}
@@ -1879,7 +2045,7 @@ export default function App() {
         </div>
       )}
 
-      {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className="bg-green-600 text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20"><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{String(toast.message)}</span></div></div>)}
+      {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className={`${toast.type === 'ERROR' ? 'bg-red-600' : toast.type === 'WARNING' ? 'bg-orange-500' : toast.type === 'INFO' ? 'bg-blue-600' : 'bg-green-600'} text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20`}><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{String(toast.message)}</span></div></div>)}
 
       {/* Admin: Client Info & Password Reset Modal */}
       {showClientInfoModal && clientInfoTarget && db[clientInfoTarget] && (
@@ -1927,8 +2093,18 @@ export default function App() {
         </div>
       )}
 
+      {/* Exercise Image Manager Modal (Admin) */}
+      <ExerciseImageManager
+        isOpen={imageManagerOpen}
+        onClose={() => setImageManagerOpen(false)}
+        exerciseName={imageManagerTarget.exName}
+        onSelectImage={(imgData) => {
+          updateImageHook(imageManagerTarget.dayId, imageManagerTarget.exName, imgData);
+        }}
+      />
+
       {/* NEW: Toast notification container */}
-      <div className="fixed bottom-24 right-4 z-40 space-y-2">
+      <div className="fixed bottom-32 right-4 z-40 space-y-2">
         {toasts.map((toast, idx) => (
           <Toast
             key={idx}

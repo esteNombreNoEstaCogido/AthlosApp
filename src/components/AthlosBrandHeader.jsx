@@ -69,9 +69,9 @@ export const AthlosBrandHeader = ({
           <div className="relative z-10 flex flex-col items-center">
             <div 
               className="text-6xl font-black tracking-tighter mb-2"
-              style={{ color: colors.accent }}
+              style={{ color: colors.accent, fontFamily: 'Arial Black, sans-serif' }}
             >
-              ⚡
+              A
             </div>
             <h1 
               className="text-4xl font-black tracking-tighter"

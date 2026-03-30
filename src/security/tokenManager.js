@@ -188,25 +188,30 @@ export const isTokenExpired = async (token) => {
 };
 
 /**
- * Store token in localStorage
+ * Store token in localStorage or sessionStorage based on persistence preference
  * @param {string} token - JWT token
+ * @param {boolean} persistent - If true, store in localStorage (survives browser close). If false, sessionStorage.
  */
-export const storeToken = (token) => {
+export const storeToken = (token, persistent = true) => {
   try {
-    localStorage.setItem('athlos_token', token);
-    localStorage.setItem('athlos_token_stored_at', new Date().toISOString());
+    const storage = persistent ? localStorage : sessionStorage;
+    storage.setItem('athlos_token', token);
+    storage.setItem('athlos_token_stored_at', new Date().toISOString());
+    // Also store the persistence preference so we know where to look on restore
+    localStorage.setItem('athlos_token_persistent', persistent ? '1' : '0');
   } catch (error) {
     console.error('Failed to store token:', error);
   }
 };
 
 /**
- * Retrieve token from localStorage
+ * Retrieve token from storage (checks both localStorage and sessionStorage)
  * @returns {string|null} - JWT token or null
  */
 export const getStoredToken = () => {
   try {
-    return localStorage.getItem('athlos_token');
+    // Check localStorage first (persistent sessions), then sessionStorage
+    return localStorage.getItem('athlos_token') || sessionStorage.getItem('athlos_token');
   } catch (error) {
     console.error('Failed to retrieve token:', error);
     return null;
@@ -214,12 +219,15 @@ export const getStoredToken = () => {
 };
 
 /**
- * Clear token from storage
+ * Clear token from both storage types
  */
 export const clearToken = () => {
   try {
     localStorage.removeItem('athlos_token');
     localStorage.removeItem('athlos_token_stored_at');
+    localStorage.removeItem('athlos_token_persistent');
+    sessionStorage.removeItem('athlos_token');
+    sessionStorage.removeItem('athlos_token_stored_at');
   } catch (error) {
     console.error('Failed to clear token:', error);
   }
