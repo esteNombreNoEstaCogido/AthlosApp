@@ -24,6 +24,11 @@
 
     <!-- Safe area padding + lock portrait via Screen Orientation API -->
     <style>
+      html, body {
+        background-color: #09090b;
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+      }
       body {
         padding-top: env(safe-area-inset-top, 0px);
         padding-bottom: env(safe-area-inset-bottom, 0px);

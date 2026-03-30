@@ -4,5 +4,13 @@
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#09090b",
+    "allowMixedContent": true,
+    "overScrollMode": "never"
+  },
+  "ios": {
+    "backgroundColor": "#09090b"
   }
 }

@@ -1730,9 +1730,11 @@ export default function App() {
     <div className="min-h-screen font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
       <BackButtonExitHandler
         isEnabled={!!loggedInUser}
-        canGoBack={selectedDay !== null || activeTab !== "home"}
+        canGoBack={selectedDay !== null || activeTab !== "home" || isEditingClientRoutine || editingDayId !== null}
         onNavigateBack={() => {
-          if (selectedDay !== null) { setSelectedDay(null); }
+          if (editingDayId !== null) { setEditingDayId(null); }
+          else if (isEditingClientRoutine) { setIsEditingClientRoutine(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsAdminMode(true); }
+          else if (selectedDay !== null) { setSelectedDay(null); }
           else { navigateTo("home"); }
         }}
         onExit={() => signOutUser()}
