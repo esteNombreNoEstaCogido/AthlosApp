@@ -24,7 +24,7 @@ import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
 import { 
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  initializeFirestore, persistentLocalCache, persistentSingleTabManager,
   getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc,
   enableNetwork 
 } from "firebase/firestore";
@@ -80,14 +80,21 @@ const firebaseConfig = {
 let app, db_cloud;
 try {
   app = initializeApp(firebaseConfig);
+  // Usar persistentSingleTabManager (compatible con Android WebView)
+  // persistentMultipleTabManager usa BroadcastChannel que no existe en WebViews
   try {
     db_cloud = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({ forceOwnership: true }) })
     });
-    console.log("✅ Firestore offline persistence enabled");
+    console.log("✅ Firestore offline persistence enabled (singleTab)");
   } catch (persistErr) {
-    console.warn("⚠️ Persistence init failed, falling back:", persistErr.message);
-    db_cloud = getFirestore(app);
+    console.warn("⚠️ Persistence init failed, trying without cache config:", persistErr.message);
+    try {
+      db_cloud = getFirestore(app);
+      console.log("✅ Firestore initialized (memory cache)");
+    } catch (fallbackErr) {
+      console.error("❌ Firestore fallback also failed:", fallbackErr.message);
+    }
   }
 } catch (err) {
   console.error("Firebase init failed:", err.message);
@@ -1192,7 +1199,29 @@ export default function App() {
       }
       
       // 🔐 Secure password verification using bcryptjs
-      if (user && await verifyPassword(loginPass, user.password)) {
+      // Soporta contraseñas en texto plano (legacy) y las auto-migra a bcrypt
+      let passwordMatch = false;
+      if (user) {
+        const isBcryptHash = user.password && user.password.startsWith('$2');
+        if (isBcryptHash) {
+          passwordMatch = await verifyPassword(loginPass, user.password);
+        } else {
+          // Contraseña legacy en texto plano — comparar directamente
+          passwordMatch = (loginPass === user.password);
+          // Auto-migrar a bcrypt si coincide
+          if (passwordMatch && db_cloud) {
+            try {
+              const newHash = await hashPassword(loginPass);
+              await setDoc(doc(db_cloud, COLLECTION_NAME, input), { ...user, password: newHash });
+              console.log("🔐 Contraseña migrada a bcrypt para:", input);
+            } catch (migrateErr) {
+              console.warn("⚠️ No se pudo migrar contraseña:", migrateErr.message);
+            }
+          }
+        }
+      }
+      
+      if (user && passwordMatch) {
         setLoginAttempts(0);
         setLoginLockedUntil(null);
         // Admin if username is 'entrenador' or loaded from DB with admin role
@@ -1576,14 +1605,27 @@ export default function App() {
     }
     try {
       const hashedPassword = await hashPassword(password);
-      updateUserInCloud(id, () => ({
+      const newUserData = {
         username: username, password: hashedPassword, name: name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: JSON.parse(JSON.stringify(sourceDays)) }
-      }));
+      };
+      
+      // Escribir DIRECTAMENTE a Firestore y esperar confirmación
+      if (db_cloud) {
+        setIsSyncing(true);
+        await setDoc(doc(db_cloud, COLLECTION_NAME, id), newUserData);
+        setIsSyncing(false);
+        console.log("✅ Cliente creado en Firestore:", id);
+      }
+      // Actualizar estado local también
+      setDb(prev => ({ ...prev, [id]: newUserData }));
       setCurrentClientId(id); setShowAddClientModal(false);
       setNewClient({ name: "", username: "", password: "", sourceTemplate: "" });
+      showSuccess("Cliente " + name + " creado ✓");
     } catch (error) {
-      setToast({ type: "ERROR", message: "Error al crear cuenta" }); 
-      setTimeout(() => setToast(null), 3000);
+      console.error("❌ Error creando cliente:", error.message);
+      setIsSyncing(false);
+      setToast({ type: "ERROR", message: "Error al crear cuenta: " + error.message }); 
+      setTimeout(() => setToast(null), 4000);
     }
   };
 
