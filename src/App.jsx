@@ -102,7 +102,7 @@ try {
 if (!db_cloud) {
   console.error("⛔ Firestore not initialized — app will run in offline-only mode");
 }
-const COLLECTION_NAME = "athlos_clients";
+const APP_VERSION = "2.4.0";
 
 // ==========================================
 // UTILIDADES BLINDADAS
@@ -1697,6 +1697,7 @@ export default function App() {
               </div>
               <h2 className="text-amber-500 text-lg font-black tracking-tight">Entrenamiento Premium</h2>
               <p className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">by Sebas</p>
+              <p className="text-zinc-700 text-[8px] font-mono mt-1">v{APP_VERSION}</p>
             </div>
           <div className="space-y-4">
             <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
@@ -1705,7 +1706,7 @@ export default function App() {
             {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
             <button onClick={authenticate} className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4">Acceder</button>
           </div>
-          <p className="text-center text-zinc-700 text-[9px] mt-10">Desarrollado por Sebas &copy; {new Date().getFullYear()}</p>
+          <p className="text-center text-zinc-700 text-[9px] mt-10">Desarrollado por Sebas &copy; {new Date().getFullYear()} · v{APP_VERSION}</p>
         </div>
       </div>
       </>
