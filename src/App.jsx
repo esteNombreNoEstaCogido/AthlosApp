@@ -102,7 +102,8 @@ try {
 if (!db_cloud) {
   console.error("⛔ Firestore not initialized — app will run in offline-only mode");
 }
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.4.1";
+const COLLECTION_NAME = "athlos_clients";
 
 // ==========================================
 // UTILIDADES BLINDADAS
