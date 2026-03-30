@@ -821,6 +821,7 @@ export default function App() {
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
   const lastAppliedUpdateRef = useRef({});
+  const initialSetupDoneRef = useRef(false);
 
   // RED Y FIREBASE
   useEffect(() => {
@@ -1077,45 +1078,50 @@ export default function App() {
 
   useEffect(() => {
     if (loggedInUser && db[loggedInUser]) {
-      setCurrentClientId(loggedInUser);
-      setIsAdminMode(loggedInUser === 'entrenador' || loggedInUser === 'coach');
+      // Solo resetear currentClientId y cargar datos iniciales en el primer load
+      // para no sacar al admin del cliente que está editando
+      if (!initialSetupDoneRef.current) {
+        initialSetupDoneRef.current = true;
+        setCurrentClientId(loggedInUser);
+        setIsAdminMode(loggedInUser === 'entrenador' || loggedInUser === 'coach');
       
-      // NEW: Load user's color preference
-      const saved = localStorage.getItem(`athlos_palette_${loggedInUser}`);
-      if (saved) {
-        setPreferredPaletteId(saved);
-      } else if (db[loggedInUser]?.preferredPaletteId) {
-        setPreferredPaletteId(db[loggedInUser].preferredPaletteId);
-      }
-      
-      // NEW: Load motivational phrases
-      const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
-      if (savedPhrases) {
-        try {
-          const phrases = JSON.parse(savedPhrases);
-          setAllMotivationalPhrases(phrases);
-          if (phrases.length > 0) {
-            setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
-          }
-        } catch (e) {
-          console.warn('Failed to parse motivational phrases:', e.message);
+        // Load user's color preference
+        const saved = localStorage.getItem(`athlos_palette_${loggedInUser}`);
+        if (saved) {
+          setPreferredPaletteId(saved);
+        } else if (db[loggedInUser]?.preferredPaletteId) {
+          setPreferredPaletteId(db[loggedInUser].preferredPaletteId);
         }
-      } else if (db[loggedInUser]?.motivationalPhrases) {
-        setAllMotivationalPhrases(db[loggedInUser].motivationalPhrases);
-        setDailyMotivationalPhrase(db[loggedInUser].currentMotivationalPhrase || 'La consistencia es la clave del éxito 💪');
-      }
-
-      // Cargar biblioteca de ejercicios personalizados del entrenador
-      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
-        const savedCustomEx = localStorage.getItem('athlos_custom_exercises');
-        if (savedCustomEx) {
+      
+        // Load motivational phrases
+        const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
+        if (savedPhrases) {
           try {
-            setCustomExercises(JSON.parse(savedCustomEx));
+            const phrases = JSON.parse(savedPhrases);
+            setAllMotivationalPhrases(phrases);
+            if (phrases.length > 0) {
+              setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
+            }
           } catch (e) {
-            console.warn('Failed to parse custom exercises:', e.message);
+            console.warn('Failed to parse motivational phrases:', e.message);
           }
-        } else if (db[loggedInUser]?.customExercises) {
-          setCustomExercises(db[loggedInUser].customExercises);
+        } else if (db[loggedInUser]?.motivationalPhrases) {
+          setAllMotivationalPhrases(db[loggedInUser].motivationalPhrases);
+          setDailyMotivationalPhrase(db[loggedInUser].currentMotivationalPhrase || 'La consistencia es la clave del éxito 💪');
+        }
+
+        // Cargar biblioteca de ejercicios personalizados del entrenador
+        if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+          const savedCustomEx = localStorage.getItem('athlos_custom_exercises');
+          if (savedCustomEx) {
+            try {
+              setCustomExercises(JSON.parse(savedCustomEx));
+            } catch (e) {
+              console.warn('Failed to parse custom exercises:', e.message);
+            }
+          } else if (db[loggedInUser]?.customExercises) {
+            setCustomExercises(db[loggedInUser].customExercises);
+          }
         }
       }
     }
@@ -1129,6 +1135,7 @@ export default function App() {
       // Si la base de datos no es la inicial y el usuario no está, expulsar.
       if (!userExists && dataLoaded) {
         clearToken();
+        initialSetupDoneRef.current = false;
         setLoggedInUser(null);
         setIsAdminMode(false);
         localStorage.removeItem("athlos_session_final");
@@ -1251,6 +1258,7 @@ export default function App() {
   };
 
   const signOutUser = () => {
+    initialSetupDoneRef.current = false;
     setLoggedInUser(null); 
     setIsAdminMode(false); 
     setIsEditingClientRoutine(false);
