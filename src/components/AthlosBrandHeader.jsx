@@ -67,23 +67,18 @@ export const AthlosBrandHeader = ({
           />
           {/* Logo container */}
           <div className="relative z-10 flex flex-col items-center">
-            <div 
-              className="text-6xl font-black tracking-tighter mb-2"
-              style={{ color: colors.accent, fontFamily: 'Arial Black, sans-serif' }}
-            >
-              A
-            </div>
+            <img src="/athlos-logo.png" alt="Athlos" className="w-24 h-24 object-contain mb-2 drop-shadow-[0_0_20px_rgba(212,175,55,0.3)]" />
             <h1 
-              className="text-4xl font-black tracking-tighter"
-              style={{ color: colors.accent, letterSpacing: '-2px' }}
+              className="text-2xl font-black tracking-tight text-center"
+              style={{ color: colors.accent, letterSpacing: '-1px' }}
             >
-              ATHLOS
+              Entrenamiento Premium
             </h1>
             <div 
               className="text-xs uppercase tracking-widest mt-1 font-bold"
               style={{ color: colors.text, opacity: 0.7 }}
             >
-              Entrenamiento Premium
+              by Sebas
             </div>
           </div>
         </div>

@@ -32,8 +32,37 @@ import {
   PlusCircle, History, Trash2, Clock, MessageSquareHeart, X, Zap, Users, 
   Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, 
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
-  Camera, CheckSquare, CalendarPlus, Eye, Download, TrendingDown, Scale, Image
+  Camera, CheckSquare, CalendarPlus, Eye, Download, TrendingDown, Scale, Image,
+  Swords, Target, Shield, Bike, Footprints, Mountain, Timer, Activity,
+  HeartPulse, Rows, Grip, PersonStanding
 } from "lucide-react";
+
+// Iconos predefinidos para días de entrenamiento (admin puede elegir)
+const DAY_ICON_OPTIONS = [
+  { id: "dumbbell", label: "Mancuerna", icon: Dumbbell },
+  { id: "flame", label: "Fuego", icon: Flame },
+  { id: "zap", label: "Rayo", icon: Zap },
+  { id: "trophy", label: "Trofeo", icon: Trophy },
+  { id: "crown", label: "Corona", icon: Crown },
+  { id: "target", label: "Diana", icon: Target },
+  { id: "swords", label: "Espadas", icon: Swords },
+  { id: "shield", label: "Escudo", icon: Shield },
+  { id: "heart", label: "Corazón", icon: Heart },
+  { id: "heartpulse", label: "Pulso", icon: HeartPulse },
+  { id: "brain", label: "Cerebro", icon: Brain },
+  { id: "bike", label: "Bici", icon: Bike },
+  { id: "footprints", label: "Pasos", icon: Footprints },
+  { id: "mountain", label: "Montaña", icon: Mountain },
+  { id: "timer", label: "Cronómetro", icon: Timer },
+  { id: "activity", label: "Actividad", icon: Activity },
+  { id: "sparkles", label: "Estrellas", icon: Sparkles },
+  { id: "calculator", label: "Calculadora", icon: Calculator },
+];
+
+const getDayIcon = (iconId) => {
+  const found = DAY_ICON_OPTIONS.find(o => o.id === iconId);
+  return found ? found.icon : Dumbbell;
+};
 
 // ==========================================
 // CONFIGURACIÓN FIREBASE
@@ -711,7 +740,7 @@ export default function App() {
   const [selectedExerciseTemplate, setSelectedExerciseTemplate] = useState("");
   const [selectedMusculoGroup, setSelectedMusculoGroup] = useState("");
   const [newEx, setNewEx] = useState({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
-  const [newDay, setNewDay] = useState({ title: "", focus: "", warmupType: "warmupLower" });
+  const [newDay, setNewDay] = useState({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" });
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [newClient, setNewClient] = useState({ name: "", username: "", password: "", sourceTemplate: "" });
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
@@ -1462,9 +1491,9 @@ export default function App() {
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
           <div className="w-full max-w-sm">
             <div className="text-center mb-12">
-              <div className="relative mx-auto mb-4 w-32 h-32">
+              <div className="relative mx-auto mb-6 w-48 h-48">
                 <div className="absolute inset-0 bg-amber-500/15 rounded-full blur-3xl scale-150" />
-                <img src="/athlos-logo.png" alt="Athlos" className="relative w-32 h-32 object-contain drop-shadow-[0_0_25px_rgba(245,158,11,0.3)]" />
+                <img src="/athlos-logo.png" alt="Athlos" className="relative w-48 h-48 object-contain drop-shadow-[0_0_35px_rgba(245,158,11,0.4)]" />
               </div>
               <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-[0.3em] mt-1">Entrenamiento Premium</p>
             </div>
@@ -1600,30 +1629,64 @@ export default function App() {
                       {!editingDayId ? (
                         <>
                           <div className="grid grid-cols-2 gap-6">
-                            {(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).map((day, idx) => (
+                            {(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).map((day, idx) => {
+                              const AdminDayIcon = getDayIcon(day.icon);
+                              return (
                               <div key={day.id} className="relative group">
                                 <button onClick={() => setEditingDayId(day.id)} className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 p-5 rounded-xl transition-all active:scale-95 text-left">
-                                  <p className="text-[9px] text-zinc-400 font-bold uppercase group-hover:text-amber-500 transition-colors">{String(day.focus || "")}</p>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <AdminDayIcon size={18} className="text-amber-500" />
+                                    <p className="text-[9px] text-zinc-400 font-bold uppercase group-hover:text-amber-500 transition-colors">{String(day.focus || "")}</p>
+                                  </div>
                                   <p className="text-sm font-black text-white mt-1 line-clamp-2">{String(day.title || "Día")}</p>
                                   <p className="text-[8px] text-zinc-500 mt-2">{(Array.isArray(day.exercises) ? day.exercises : []).length} ejercicios</p>
+                                  {/* Icon selector */}
+                                  <div className="mt-3 pt-3 border-t border-zinc-700/50" onClick={e => e.stopPropagation()}>
+                                    <p className="text-[8px] text-zinc-500 font-bold uppercase mb-2">Icono del día</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {DAY_ICON_OPTIONS.map(opt => {
+                                        const OptIcon = opt.icon;
+                                        const isSelected = (day.icon || "dumbbell") === opt.id;
+                                        return (
+                                          <button key={opt.id} title={opt.label} onClick={(e) => { e.stopPropagation(); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const di = days.findIndex(d => d.id === day.id); if(di > -1) days[di] = { ...days[di], icon: opt.id }; return { ...u, workoutData: { ...u.workoutData, days } }; }); }} className={`p-1.5 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-black scale-110' : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white'}`}>
+                                            <OptIcon size={14} />
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
                                 </button>
                                 <div className="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button onClick={(e) => { e.stopPropagation(); const newDayId = Date.now(); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const sourceDayIdx = days.findIndex(d => d.id === day.id); if(sourceDayIdx > -1) { const newDay = JSON.parse(JSON.stringify(days[sourceDayIdx])); newDay.id = newDayId; newDay.title += " (Copia)"; days.splice(sourceDayIdx + 1, 0, newDay); } return { ...u, workoutData: { ...u.workoutData, days } }; }); setToast({ type: "SUCCESS", message: "Día duplicado ✓" }); setTimeout(() => setToast(null), 2500); }} className="bg-amber-500 text-black p-1.5 rounded-lg text-[9px] font-bold hover:bg-amber-600 active:scale-90"><Plus size={12}/></button>
                                   <button onClick={(e) => { e.stopPropagation(); removeDayFromRoutine(day.id); }} className="bg-red-500/20 text-red-500 p-1.5 rounded-lg hover:bg-red-500/30 active:scale-90"><Trash2 size={12}/></button>
                                 </div>
                               </div>
-                            ))}
+                            );})}
                           </div>
                           
                           <div className="space-y-4 bg-zinc-800/30 p-6 rounded-xl border border-zinc-700/50">
                             <input key={`newday-title-${editingClientId}`} type="text" placeholder="Nombre del día..." className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none focus:border-amber-500" value={newDay.title} onChange={e => setNewDay({...newDay, title: e.target.value})} />
                             <input key={`newday-focus-${editingClientId}`} type="text" placeholder="Focus (ej: Fuerza, Hipertrofia)..." className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none focus:border-amber-500" value={newDay.focus} onChange={e => setNewDay({...newDay, focus: e.target.value})} />
+                            <div>
+                              <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2">Icono del día</p>
+                              <div className="flex flex-wrap gap-2">
+                                {DAY_ICON_OPTIONS.map(opt => {
+                                  const NewDayOptIcon = opt.icon;
+                                  const isSelected = newDay.icon === opt.id;
+                                  return (
+                                    <button key={opt.id} type="button" title={opt.label} onClick={() => setNewDay({...newDay, icon: opt.id})} className={`p-2 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-black scale-110' : 'bg-zinc-700/50 text-zinc-400 hover:bg-zinc-600 hover:text-white'}`}>
+                                      <NewDayOptIcon size={16} />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
                             <select key={`newday-warmup-${editingClientId}`} value={newDay.warmupType} onChange={e => setNewDay({...newDay, warmupType: e.target.value})} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white text-xs outline-none">
                               <option value="warmupLower">Calentamiento Inferior</option>
                               <option value="warmupUpper">Calentamiento Superior</option>
                               <option value="warmupAthlos">Calentamiento Athlos</option>
                             </select>
-                            <button onClick={() => { if(newDay.title?.trim()) { updateUserInCloud(editingClientId, u => ({ ...u, workoutData: { ...u.workoutData, days: [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : []), { id: Date.now(), title: sanitizeInput(newDay.title), focus: sanitizeInput(newDay.focus), warmupType: newDay.warmupType, exercises: [] }] } })); setNewDay({ title: "", focus: "", warmupType: "warmupLower" }); setToast({ type: "SUCCESS", message: "Día creado ✨" }); setTimeout(() => setToast(null), 2500); } }} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Crear Día</button>
+                            <button onClick={() => { if(newDay.title?.trim()) { updateUserInCloud(editingClientId, u => ({ ...u, workoutData: { ...u.workoutData, days: [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : []), { id: Date.now(), title: sanitizeInput(newDay.title), focus: sanitizeInput(newDay.focus), warmupType: newDay.warmupType, icon: newDay.icon, exercises: [] }] } })); setNewDay({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" }); setToast({ type: "SUCCESS", message: "Día creado ✨" }); setTimeout(() => setToast(null), 2500); } }} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Crear Día</button>
                           </div>
                         </>
                       ) : (
@@ -1790,12 +1853,14 @@ export default function App() {
               {validDays.length === 0 && !isAdminMode ? (
                 <div className="text-center py-10 opacity-40 font-bold text-sm italic">Rutina en construcción...</div>
               ) : null}
-              {validDays.map(day => (
+              {validDays.map(day => {
+                const DayIcon = getDayIcon(day.icon);
+                return (
                 <button key={day.id} onClick={() => navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
-                  <div className="flex items-center gap-4"><div className="p-4 rounded-3xl" style={palette ? { backgroundColor: `${palette.accent}15`, color: palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: '#f9fafb', color: '#6b7280' }}><Dumbbell size={28}/></div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
+                  <div className="flex items-center gap-4"><div className="p-4 rounded-3xl" style={palette ? { backgroundColor: `${palette.accent}15`, color: palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: '#f9fafb', color: '#6b7280' }}><DayIcon size={28}/></div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
                   <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </button>
-              ))}
+              );})}
             </div>
 
             {/* Client Settings Modal is rendered at the bottom with other modals */}
