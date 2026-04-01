@@ -102,7 +102,7 @@ try {
 if (!db_cloud) {
   console.error("⛔ Firestore not initialized — app will run in offline-only mode");
 }
-const APP_VERSION = "2.4.1";
+const APP_VERSION = "2.4.2";
 const COLLECTION_NAME = "athlos_clients";
 
 // ==========================================
@@ -1042,28 +1042,47 @@ export default function App() {
       return;
     }
     // With Firestore persistence enabled, onSnapshot serves cached data offline
+    // IMPORTANTE: snap.metadata.fromCache nos dice si los datos vienen de la caché local
+    // o del servidor. NUNCA sobrescribir Firestore con INITIAL_DB si solo tenemos caché vacía,
+    // porque al reinstalar el APK la caché está vacía pero el servidor tiene datos reales.
     const unsub = onSnapshot(collection(db_cloud, COLLECTION_NAME), (snap) => {
       const cloud = {};
       snap.forEach(d => { cloud[d.id] = d.data(); });
       
-      // Si no hay datos en cloud o falta entrenador, sincronizar SOLO los faltantes
+      const isFromCache = snap.metadata.fromCache;
+      
       if (Object.keys(cloud).length === 0) {
-         // Agregar TODOS los usuarios por primera vez
+         if (isFromCache) {
+           // Caché vacía (ej: APK recién instalado) - NO escribir INITIAL_DB al servidor
+           // Mostrar INITIAL_DB localmente como fallback temporal hasta que llegue el snapshot del servidor
+           console.log('⏳ Cache vacía, esperando datos del servidor...');
+           setDb(INITIAL_DB);
+           setDataLoaded(true);
+           return; // Cuando lleguen datos del servidor, onSnapshot se dispara otra vez
+         }
+         // Servidor confirmó que la colección está vacía - primera vez, poblar con INITIAL_DB
+         console.log('🆕 Colección vacía confirmada por servidor, inicializando...');
          Object.keys(INITIAL_DB).forEach(k => {
            setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
            cloud[k] = INITIAL_DB[k];
          });
       } else {
          // Cloud tiene datos: agregar SOLO usuarios faltantes, NO sobrescribir existentes
+         // Solo escribir a Firestore cuando tenemos confirmación del servidor
          Object.keys(INITIAL_DB).forEach(k => {
            if (!cloud[k]) {
              // Usuario completamente faltante: agregar desde INITIAL_DB
-             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
+             // Solo escribir a Firestore si tenemos datos del servidor (no caché parcial)
+             if (!isFromCache) {
+               setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
+             }
              cloud[k] = INITIAL_DB[k];
-           } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
-             // Usuario existe pero le faltan las tablas: llenar desde INITIAL_DB
-             cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
-             setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(err => console.warn("Sync workout error:", err));
+           } else if (!isFromCache && (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days))) {
+             // Usuario existe pero le faltan las tablas Y estamos seguros (datos del servidor)
+             if (INITIAL_DB[k]) {
+               cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
+               setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(err => console.warn("Sync workout error:", err));
+             }
            }
          });
       }
@@ -1071,6 +1090,7 @@ export default function App() {
       setDataLoaded(true);
     }, (err) => {
       console.warn("Firebase Snapshot Error:", err);
+      setDb(INITIAL_DB);
       setDataLoaded(true);
     });
 
