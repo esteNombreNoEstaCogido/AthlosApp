@@ -25,7 +25,7 @@ import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
 import { initializeApp } from "firebase/app";
 import { 
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-  getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc,
+  getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot, deleteDoc,
   enableNetwork 
 } from "firebase/firestore";
 import {
@@ -33,7 +33,7 @@ import {
   PlusCircle, History, Trash2, Clock, MessageSquareHeart, X, Zap, Users, 
   Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, 
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
-  Camera, Eye, Download, TrendingDown, Scale, Image,
+  Camera, Eye, Download, TrendingDown, Scale, Image, RefreshCw, Database,
   Swords, Target, Shield, Bike, Footprints, Mountain, Timer, Activity,
   HeartPulse
 } from "lucide-react";
@@ -102,7 +102,7 @@ try {
 if (!db_cloud) {
   console.error("⛔ Firestore not initialized — app will run in offline-only mode");
 }
-const APP_VERSION = "2.4.2";
+const APP_VERSION = "2.4.3";
 const COLLECTION_NAME = "athlos_clients";
 
 // ==========================================
@@ -751,6 +751,7 @@ export default function App() {
   const [db, setDb] = useState(() => safeJSONParse("athlos_coach_db_final", INITIAL_DB));
   const [dataLoaded, setDataLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isForceReloading, setIsForceReloading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const [loggedInUser, setLoggedInUser] = useState(null);
@@ -1050,41 +1051,43 @@ export default function App() {
       snap.forEach(d => { cloud[d.id] = d.data(); });
       
       const isFromCache = snap.metadata.fromCache;
+      // Leer lista de usuarios eliminados intencionalmente
+      const deletedList = cloud['_deleted_users']?.ids || [];
+      // Eliminar el documento meta del estado visible
+      delete cloud['_deleted_users'];
       
       if (Object.keys(cloud).length === 0) {
          if (isFromCache) {
            // Caché vacía (ej: APK recién instalado) - NO escribir INITIAL_DB al servidor
-           // Mostrar INITIAL_DB localmente como fallback temporal hasta que llegue el snapshot del servidor
            console.log('⏳ Cache vacía, esperando datos del servidor...');
            setDb(INITIAL_DB);
            setDataLoaded(true);
-           return; // Cuando lleguen datos del servidor, onSnapshot se dispara otra vez
+           return;
          }
          // Servidor confirmó que la colección está vacía - primera vez, poblar con INITIAL_DB
          console.log('🆕 Colección vacía confirmada por servidor, inicializando...');
          Object.keys(INITIAL_DB).forEach(k => {
-           setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
-           cloud[k] = INITIAL_DB[k];
-         });
-      } else {
-         // Cloud tiene datos: agregar SOLO usuarios faltantes, NO sobrescribir existentes
-         // Solo escribir a Firestore cuando tenemos confirmación del servidor
-         Object.keys(INITIAL_DB).forEach(k => {
-           if (!cloud[k]) {
-             // Usuario completamente faltante: agregar desde INITIAL_DB
-             // Solo escribir a Firestore si tenemos datos del servidor (no caché parcial)
-             if (!isFromCache) {
-               setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
-             }
+           if (!deletedList.includes(k)) {
+             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
              cloud[k] = INITIAL_DB[k];
-           } else if (!isFromCache && (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days))) {
-             // Usuario existe pero le faltan las tablas Y estamos seguros (datos del servidor)
-             if (INITIAL_DB[k]) {
-               cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
-               setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(err => console.warn("Sync workout error:", err));
-             }
            }
          });
+      } else {
+         // Cloud tiene datos: agregar SOLO usuarios faltantes que NO fueron eliminados
+         if (!isFromCache) {
+           Object.keys(INITIAL_DB).forEach(k => {
+             if (deletedList.includes(k)) return; // Fue eliminado intencionalmente, NO re-agregar
+             if (!cloud[k]) {
+               setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
+               cloud[k] = INITIAL_DB[k];
+             } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
+               if (INITIAL_DB[k]) {
+                 cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
+                 setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(err => console.warn("Sync workout error:", err));
+               }
+             }
+           });
+         }
       }
       setDb(cloud);
       setDataLoaded(true);
@@ -1418,9 +1421,23 @@ export default function App() {
     return source.filter(e => e.mus === group).sort((a, b) => a.name.localeCompare(b.name));
   };
 
+  // Registrar usuario como eliminado para que INITIAL_DB no lo re-agregue
+  const trackDeletedUser = async (userId) => {
+    if (!db_cloud) return;
+    try {
+      const metaRef = doc(db_cloud, COLLECTION_NAME, '_deleted_users');
+      const metaSnap = await getDoc(metaRef);
+      const current = metaSnap.exists() ? (metaSnap.data().ids || []) : [];
+      if (!current.includes(userId)) {
+        await setDoc(metaRef, { ids: [...current, userId] });
+      }
+    } catch (err) { console.warn('Error tracking deleted user:', err); }
+  };
+
   const removeClientAccount = async () => {
     if (currentClientId === 'entrenador' || currentClientId === 'coach') return;
     setIsSyncing(true);
+    await trackDeletedUser(currentClientId);
     await deleteDoc(doc(db_cloud, COLLECTION_NAME, currentClientId)).catch(()=>{});
     setDb(prev => { const n = {...prev}; delete n[currentClientId]; return n; });
     setCurrentClientId('entrenador'); setIsSyncing(false);
@@ -1447,7 +1464,8 @@ export default function App() {
         setIsEditingClientRoutine(false);
       }
       
-      // LUEGO eliminar de Firebase si está online
+      // Registrar como eliminado y luego borrar de Firebase
+      await trackDeletedUser(clientId);
       if (navigator.onLine) {
         await deleteDoc(doc(db_cloud, COLLECTION_NAME, clientId)).catch(()=>{});
       }
@@ -1469,6 +1487,38 @@ export default function App() {
       setToast({ type: "ERROR", message: "Error al eliminar cliente" }); 
       setTimeout(() => setToast(null), 2500);
     }
+  };
+
+  // RESTAURAR DATOS DESDE FIRESTORE (botón de emergencia para el admin)
+  const forceReloadFromServer = async () => {
+    if (!db_cloud) {
+      setToast({ type: "ERROR", message: "Firestore no disponible" });
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    setIsForceReloading(true);
+    try {
+      // Forzar reconexión para obtener datos frescos del servidor
+      await enableNetwork(db_cloud);
+      const snap = await getDocs(collection(db_cloud, COLLECTION_NAME));
+      const cloud = {};
+      snap.forEach(d => { 
+        if (d.id !== '_deleted_users') {
+          cloud[d.id] = d.data(); 
+        }
+      });
+      if (Object.keys(cloud).length > 0) {
+        setDb(cloud);
+        setToast({ type: "SUCCESS", message: `✅ Datos restaurados del servidor (${Object.keys(cloud).filter(k => k !== 'entrenador').length} clientes)` });
+      } else {
+        setToast({ type: "ERROR", message: "No se encontraron datos en el servidor" });
+      }
+    } catch (err) {
+      console.error('Error al restaurar:', err);
+      setToast({ type: "ERROR", message: "Error de conexión con el servidor" });
+    }
+    setIsForceReloading(false);
+    setTimeout(() => setToast(null), 3000);
   };
 
   const addLogRecord = useCallback((exName, weight, reps) => {
@@ -1809,7 +1859,10 @@ export default function App() {
               <div className="bg-zinc-900 p-8 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-8 mt-8">
                 <div className="flex justify-between items-center text-[10px] font-black uppercase text-zinc-500">
                   <div className="flex items-center gap-2"><Users size={14} className="text-amber-500" /> Clientes</div>
-                  <button onClick={() => setShowAddClientModal(true)} className="bg-zinc-800 text-amber-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1"><Plus size={12}/> Nuevo</button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={forceReloadFromServer} disabled={isForceReloading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={isForceReloading ? 'animate-spin' : ''}/> {isForceReloading ? 'Cargando...' : 'Restaurar BD'}</button>
+                    <button onClick={() => setShowAddClientModal(true)} className="bg-zinc-800 text-amber-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1"><Plus size={12}/> Nuevo</button>
+                  </div>
                 </div>
                 <div className="flex gap-6 overflow-x-auto scrollbar-hide pb-4">
                   {Object.keys(db).filter(id => id !== 'entrenador').map(id => (
