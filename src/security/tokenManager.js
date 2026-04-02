@@ -95,7 +95,7 @@ export const generateToken = async (userId, expiresInHours = 24) => {
   const secret = import.meta.env.VITE_JWT_SECRET;
 
   if (!secret || secret.includes('your_')) {
-    console.error('❌ ERROR: VITE_JWT_SECRET not configured');
+    if (import.meta.env.DEV) console.error('VITE_JWT_SECRET not configured');
     throw new Error('JWT secret not configured');
   }
 
@@ -131,7 +131,7 @@ export const verifyToken = async (token) => {
   const secret = import.meta.env.VITE_JWT_SECRET;
 
   if (!secret || secret.includes('your_')) {
-    console.error('❌ ERROR: VITE_JWT_SECRET not configured');
+    if (import.meta.env.DEV) console.error('VITE_JWT_SECRET not configured');
     return { valid: false, decoded: null, error: 'JWT secret not configured' };
   }
 
@@ -168,7 +168,7 @@ export const verifyToken = async (token) => {
       error: null,
     };
   } catch (error) {
-    console.error('Token verification error:', error.message);
+    if (import.meta.env.DEV) console.error('Token verification error:', error.message);
     return { valid: false, decoded: null, error: error.message };
   }
 };
@@ -200,7 +200,7 @@ export const storeToken = (token, persistent = true) => {
     // Also store the persistence preference so we know where to look on restore
     localStorage.setItem('athlos_token_persistent', persistent ? '1' : '0');
   } catch (error) {
-    console.error('Failed to store token:', error);
+    if (import.meta.env.DEV) console.error('Failed to store token:', error);
   }
 };
 
@@ -213,7 +213,7 @@ export const getStoredToken = () => {
     // Check localStorage first (persistent sessions), then sessionStorage
     return localStorage.getItem('athlos_token') || sessionStorage.getItem('athlos_token');
   } catch (error) {
-    console.error('Failed to retrieve token:', error);
+    if (import.meta.env.DEV) console.error('Failed to retrieve token:', error);
     return null;
   }
 };
@@ -229,7 +229,7 @@ export const clearToken = () => {
     sessionStorage.removeItem('athlos_token');
     sessionStorage.removeItem('athlos_token_stored_at');
   } catch (error) {
-    console.error('Failed to clear token:', error);
+    if (import.meta.env.DEV) console.error('Failed to clear token:', error);
   }
 };
 

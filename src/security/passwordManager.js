@@ -22,7 +22,7 @@ export const hashPassword = async (plaintext) => {
     const hash = await bcryptjs.hash(plaintext, salt);
     return hash;
   } catch (error) {
-    console.error("❌ Hash error:", error.message);
+    if (import.meta.env.DEV) console.error("Hash error:", error.message);
     throw error;
   }
 };
@@ -43,16 +43,17 @@ export const verifyPassword = async (plaintext, hash) => {
     const isMatch = await bcryptjs.compare(plaintext, hash);
     return isMatch;
   } catch (error) {
-    console.error("❌ Verify error:", error.message);
+    if (import.meta.env.DEV) console.error("Verify error:", error.message);
     return false;
   }
 };
 
 /**
  * Validate password strength
- * Minimum requirements:
- * - At least 6 characters
+ * Requirements:
+ * - At least 8 characters
  * - No leading/trailing spaces
+ * - Must contain at least one letter and one number
  * @param {string} password - Password to validate
  * @returns {boolean} - True if password meets requirements
  */
@@ -60,8 +61,9 @@ export const validatePassword = (password) => {
   if (!password || typeof password !== "string") {
     return false;
   }
-  // At least 6 chars, no spaces
-  return password.length >= 6 && !/^\s|\s$/.test(password);
+  if (password.length < 8 || /^\s|\s$/.test(password)) return false;
+  // Must have at least one letter and one number
+  return /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
 };
 
 /**

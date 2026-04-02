@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo, useRef } from "react";
+import React, { useState, useEffect, useCallback, memo, useRef, useMemo } from "react";
 import html2pdf from "html2pdf.js";
 import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager.js";
 import { 
@@ -25,7 +25,7 @@ import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
 import { initializeApp } from "firebase/app";
 import { 
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-  getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot, deleteDoc,
+  getFirestore, doc, setDoc, getDoc, getDocFromServer, getDocs, collection, onSnapshot, deleteDoc,
   enableNetwork 
 } from "firebase/firestore";
 import {
@@ -35,7 +35,7 @@ import {
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
   Camera, Eye, Download, TrendingDown, Scale, Image, RefreshCw, Database,
   Swords, Target, Shield, Bike, Footprints, Mountain, Timer, Activity,
-  HeartPulse
+  HeartPulse, GripVertical, Search, CalendarDays
 } from "lucide-react";
 
 // Iconos predefinidos para días de entrenamiento (admin puede elegir)
@@ -69,12 +69,12 @@ const getDayIcon = (iconId) => {
 // CONFIGURACIÓN FIREBASE
 // ==========================================
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "missing",
-  authDomain: "athlos-5dcc5.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "athlos-5dcc5",
-  storageBucket: "athlos-5dcc5.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "0",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "missing",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebasestorage.app`,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 let app, db_cloud;
@@ -86,24 +86,35 @@ try {
     db_cloud = initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({ forceOwnership: true }) })
     });
-    console.log("✅ Firestore offline persistence enabled (singleTab)");
+    log("✅ Firestore offline persistence enabled (singleTab)");
   } catch (persistErr) {
-    console.warn("⚠️ Persistence init failed, trying without cache config:", persistErr.message);
+    warn("⚠️ Persistence init failed, trying without cache config:", persistErr.message);
     try {
       db_cloud = getFirestore(app);
-      console.log("✅ Firestore initialized (memory cache)");
+      log("✅ Firestore initialized (memory cache)");
     } catch (fallbackErr) {
-      console.error("❌ Firestore fallback also failed:", fallbackErr.message);
+      err("❌ Firestore fallback also failed:", fallbackErr.message);
     }
   }
-} catch (err) {
-  console.error("Firebase init failed:", err.message);
+} catch (e) {
+  err("Firebase init failed:", e.message);
 }
 if (!db_cloud) {
-  console.error("⛔ Firestore not initialized — app will run in offline-only mode");
+  err("⛔ Firestore not initialized — app will run in offline-only mode");
 }
-const APP_VERSION = "2.4.3";
+const APP_VERSION = "2.4.4";
 const COLLECTION_NAME = "athlos_clients";
+const __DEV__ = import.meta.env.MODE === 'development';
+const log = (...args) => { if (__DEV__) console.log(...args); };
+const warn = (...args) => { if (__DEV__) console.warn(...args); };
+const err = (...args) => { console.error(...args); };
+
+// Constantes de configuración
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_BASE_MS = 5 * 60 * 1000; // 5 minutos base
+const MAX_LOG_ENTRIES = 15;
+const TOKEN_HOURS_DEFAULT = 24;
+const TOKEN_HOURS_KEEP = 720; // 30 días
 
 // ==========================================
 // UTILIDADES BLINDADAS
@@ -125,7 +136,7 @@ const getSavedSession = () => {
 const callGeminiAPI = async (prompt) => {
   const geminiKey = import.meta.env.VITE_GEMINI_KEY;
   if (!geminiKey || geminiKey === "tu_api_key_aqui") {
-    console.warn("⚠️ Gemini API key no configurada");
+    warn("⚠️ Gemini API key no configurada");
     return "Coach AI en descanso. ¡Sigue así! 💪";
   }
   try {
@@ -190,6 +201,7 @@ const generatePDFReport = (client, days) => {
 // DATOS INICIALES - EJERCICIOS
 // ==========================================
 const GRUPOS_MUSCULARES = ['Pecho', 'Espalda', 'Hombros', 'Brazos', 'Piernas', 'Glúteo', 'Core', 'Cuádriceps', 'Isquios', 'Cardio', 'Movilidad'];
+const GRUPO_EMOJI = { Pecho: '🫁', Espalda: '🔙', Hombros: '🏋️', Brazos: '💪', Piernas: '🦵', 'Glúteo': '🍑', Core: '🎯', 'Cuádriceps': '🦿', Isquios: '🦵', Cardio: '❤️‍🔥', Movilidad: '🧘' };
 
 const EJERCICIOS_PREDEFINIDOS = [
   // PECHO
@@ -533,7 +545,10 @@ const PlateDisplay = ({ weight }) => {
   );
 };
 
-const MiniProgressChart = ({ data, color, isAdmin, mode, exSets }) => {
+const FALLBACK_IMG = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400';
+const imgError = (e) => { e.target.src = FALLBACK_IMG; };
+
+const MiniProgressChart = memo(({ data, color, isAdmin, mode, exSets }) => {
   const safeData = Array.isArray(data) ? data : [];
   if (safeData.length < 2) return null;
   const getVal = (d) => {
@@ -551,7 +566,7 @@ const MiniProgressChart = ({ data, color, isAdmin, mode, exSets }) => {
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full"><polyline fill="none" stroke={strokeColor} strokeWidth="3" points={points} /></svg>
     </div>
   );
-};
+});
 
 const ProgressBar = ({ label, current, previous, color = "#f59e0b" }) => {
   const maxVal = Math.max(current, previous, 1);
@@ -611,6 +626,228 @@ const calculate1RM = (weight, reps) => {
   return w * (1 + (parseInt(reps) || 1) / 30);
 };
 
+// Date format helpers (dd/mm/yy with backward compat for dd/mm)
+const formatDateLog = (d = new Date()) => {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
+};
+const parseDateLog = (dateStr) => {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/').map(Number);
+  if (parts.length === 3) return new Date(2000 + parts[2], parts[1] - 1, parts[0]);
+  if (parts.length === 2) return new Date(new Date().getFullYear(), parts[1] - 1, parts[0]);
+  return null;
+};
+const isSameDayStr = (logDate, refDate) => {
+  if (!logDate) return false;
+  const ref = formatDateLog(refDate);
+  if (logDate === ref) return true;
+  // Backward compat: dd/mm matches dd/mm/yy if same day/month
+  if (logDate.length <= 5) return ref.startsWith(logDate);
+  return false;
+};
+
+// Helper: check if a workout day has logs from today
+const isDayCompletedToday = (day, workoutLogs) => {
+  const today = new Date();
+  const exercises = Array.isArray(day.exercises) ? day.exercises : [];
+  return exercises.some(ex => {
+    const logs = Array.isArray(workoutLogs[ex.name]) ? workoutLogs[ex.name] : [];
+    return logs.some(l => isSameDayStr(l.date, today));
+  });
+};
+
+// Helper: calculate consecutive training days (streak)
+const calculateStreak = (workoutLogs) => {
+  const allDates = new Set();
+  Object.values(workoutLogs).forEach(logs => {
+    if (!Array.isArray(logs)) return;
+    logs.forEach(l => {
+      if (!l.date) return;
+      // Normalize old dd/mm to dd/mm/yy for proper comparison
+      const parsed = parseDateLog(l.date);
+      if (parsed) allDates.add(formatDateLog(parsed));
+    });
+  });
+  if (allDates.size === 0) return 0;
+  let streak = 0;
+  const check = new Date();
+  for (let i = 0; i < 365; i++) {
+    const dateStr = formatDateLog(check);
+    if (allDates.has(dateStr)) { streak++; check.setDate(check.getDate() - 1); }
+    else if (i === 0) { check.setDate(check.getDate() - 1); continue; }
+    else break;
+  }
+  return streak;
+};
+
+// Helper: weekly summary stats
+const getWeeklySummary = (workoutLogs) => {
+  const now = new Date();
+  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dayOfWeek - 1));
+  monday.setHours(0, 0, 0, 0);
+
+  const prevMonday = new Date(monday);
+  prevMonday.setDate(monday.getDate() - 7);
+
+  let thisWeekDays = new Set();
+  let thisWeekVolume = 0;
+  let prevWeekDays = new Set();
+  let prevWeekVolume = 0;
+  let thisWeekSets = 0;
+
+  Object.values(workoutLogs).forEach(logs => {
+    if (!Array.isArray(logs)) return;
+    logs.forEach(l => {
+      if (!l.date) return;
+      const logDate = parseDateLog(l.date);
+      if (!logDate) return;
+
+      const vol = (parseFloat(l.weight) || 0) * (parseInt(l.reps) || 0);
+      if (logDate >= monday) {
+        thisWeekDays.add(l.date);
+        thisWeekVolume += vol;
+        thisWeekSets++;
+      } else if (logDate >= prevMonday && logDate < monday) {
+        prevWeekDays.add(l.date);
+        prevWeekVolume += vol;
+      }
+    });
+  });
+
+  const volumeChange = prevWeekVolume > 0 ? Math.round(((thisWeekVolume - prevWeekVolume) / prevWeekVolume) * 100) : 0;
+  return { daysThisWeek: thisWeekDays.size, totalVolume: Math.round(thisWeekVolume), totalSets: thisWeekSets, volumeChange, prevWeekDays: prevWeekDays.size };
+};
+
+// Confetti effect component
+const ConfettiEffect = ({ active, onDone }) => {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
+    const particles = Array.from({ length: 120 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height * -1,
+      w: Math.random() * 8 + 4,
+      h: Math.random() * 4 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      vx: (Math.random() - 0.5) * 4,
+      vy: Math.random() * 4 + 2,
+      rot: Math.random() * 360,
+      rotV: (Math.random() - 0.5) * 8,
+      opacity: 1
+    }));
+    let frame = 0;
+    const maxFrames = 180;
+    const animate = () => {
+      frame++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (frame > maxFrames) { onDone?.(); return; }
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.08;
+        p.rot += p.rotV;
+        if (frame > maxFrames * 0.6) p.opacity = Math.max(0, 1 - (frame - maxFrames * 0.6) / (maxFrames * 0.4));
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rot * Math.PI) / 180);
+        ctx.globalAlpha = p.opacity;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      requestAnimationFrame(animate);
+    };
+    animate();
+  }, [active, onDone]);
+  if (!active) return null;
+  return <canvas ref={canvasRef} className="fixed inset-0 z-[100] pointer-events-none" />;
+};
+
+// Expanded stats chart with full history
+const ExpandedChart = ({ logs, exName, exSets, mode, color, isAdmin, onClose }) => {
+  const safeData = Array.isArray(logs) ? logs : [];
+  if (safeData.length < 2) return null;
+  const getVal = (d) => {
+    const w = parseFloat(d.weight) || 0;
+    return mode === 'volume' ? w * (parseInt(d.reps) || 10) * (parseInt(exSets) || 3) : w;
+  };
+  const vals = safeData.map(getVal).reverse();
+  const dates = safeData.map(d => d.date || '').reverse();
+  const max = Math.max(...vals);
+  const min = Math.min(...vals);
+  const range = max - min || 10;
+  const padMin = min - range * 0.1;
+  const padRange = range * 1.2;
+  const points = vals.map((v, i) => `${(i / (vals.length - 1)) * 280 + 10},${180 - ((v - padMin) / padRange) * 160}`).join(" ");
+  const strokeColor = isAdmin ? "#fbbf24" : String(color || "").includes("blue") ? "#3b82f6" : "#10b981";
+  const areaPoints = `10,180 ${points} ${280 + 10},180`;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-zinc-900 rounded-3xl border border-zinc-700 p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="text-white font-black text-base">{exName}</h3>
+            <p className="text-zinc-500 text-[10px] font-bold uppercase">{mode === 'volume' ? 'Volumen total' : 'Peso máximo'} · {safeData.length} registros</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white p-1"><X size={18}/></button>
+        </div>
+        <svg viewBox="0 0 300 200" className="w-full" style={{ height: 200 }}>
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => {
+            const y = 180 - pct * 160;
+            const val = Math.round(padMin + pct * padRange);
+            return <g key={i}><line x1="10" y1={y} x2="290" y2={y} stroke="#27272a" strokeWidth="0.5" /><text x="4" y={y + 3} fill="#71717a" fontSize="7" textAnchor="end">{val}</text></g>;
+          })}
+          {/* Area fill */}
+          <polygon points={areaPoints} fill={strokeColor} fillOpacity="0.1" />
+          {/* Line */}
+          <polyline fill="none" stroke={strokeColor} strokeWidth="2" points={points} strokeLinecap="round" strokeLinejoin="round" />
+          {/* Data points */}
+          {vals.map((v, i) => {
+            const x = (i / (vals.length - 1)) * 280 + 10;
+            const y = 180 - ((v - padMin) / padRange) * 160;
+            return <circle key={i} cx={x} cy={y} r="3" fill={strokeColor} stroke="#18181b" strokeWidth="1.5" />;
+          })}
+          {/* Date labels (show some) */}
+          {dates.map((d, i) => {
+            if (vals.length <= 6 || i % Math.ceil(vals.length / 6) === 0 || i === vals.length - 1) {
+              const x = (i / (vals.length - 1)) * 280 + 10;
+              return <text key={i} x={x} y="196" fill="#71717a" fontSize="6.5" textAnchor="middle">{d}</text>;
+            }
+            return null;
+          })}
+        </svg>
+        <div className="flex justify-between mt-3 px-1">
+          <div className="text-center">
+            <p className="text-[9px] text-zinc-500 font-bold">MÍN</p>
+            <p className="text-sm font-black text-white">{Math.round(min)}{mode === 'volume' ? '' : 'kg'}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] text-zinc-500 font-bold">MÁX</p>
+            <p className="text-sm font-black" style={{ color: strokeColor }}>{Math.round(max)}{mode === 'volume' ? '' : 'kg'}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] text-zinc-500 font-bold">ÚLTIMO</p>
+            <p className="text-sm font-black text-white">{Math.round(vals[vals.length - 1])}{mode === 'volume' ? '' : 'kg'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, accentColor, onAddExerciseNote, exerciseNotes }) => {
   const [localW, setLocalW] = useState("");
   const [localR, setLocalR] = useState("");
@@ -657,7 +894,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
   return (
     <div className={`${isAdmin ? "bg-zinc-900 border-zinc-800" : "bg-white border-gray-100"} rounded-[2.5rem] border shadow-sm overflow-hidden mb-6`}>
       <div className="relative h-52 bg-zinc-800 group">
-        <img src={ex?.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+        <img src={ex?.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
         {isAdmin && <button onClick={() => onOpenImageManager ? onOpenImageManager(dayId, safeName) : fileRef.current.click()} className="absolute top-4 left-4 bg-black/60 p-2 rounded-xl text-white flex items-center gap-1"><Camera size={18} /><span className="text-[8px] font-bold">Modificar</span><input type="file" ref={fileRef} className="hidden" onChange={e => {
              const file = e.target.files[0];
@@ -697,7 +934,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
             {logs.slice(0, 3).map(l => (
               <div key={String(l.id)} className={`flex justify-between items-center p-2 rounded-xl border animate-in zoom-in ${isAdmin ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-100'}`}>
                 <span className={`text-xs font-bold ${textAccent}`}>{String(l.weight)}kg x {String(l.reps)}</span>
-                <div className="flex items-center gap-3"><span className={`text-[9px] ${isAdmin ? 'text-zinc-500' : 'text-zinc-400'}`}>{String(l.date)}</span><button onClick={() => onDeleteLog(safeName, l.id)} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
+                <div className="flex items-center gap-3"><span className={`text-[9px] ${isAdmin ? 'text-zinc-500' : 'text-zinc-400'}`}>{String(l.date)}</span><button onClick={() => { if(window.confirm('¿Borrar esta serie?')) onDeleteLog(safeName, l.id); }} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
               </div>
             ))}
           </div>
@@ -727,8 +964,8 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
           </div>
 
           <div className="flex gap-2 mt-6">
-            <input type="number" placeholder="Kg..." className={`flex-1 min-w-0 border rounded-xl p-3 text-sm font-bold outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white" : "bg-white border-gray-200 text-gray-900"}`} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localW} onChange={e => setLocalW(e.target.value)} />
-            <input type="number" placeholder="Reps" className={`w-16 shrink-0 border rounded-xl p-3 text-sm font-bold text-center outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white" : "bg-white border-gray-200 text-gray-900"}`} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localR} onChange={e => setLocalR(e.target.value)} />
+            <input type="number" placeholder={suggestedWeight > 0 ? `${suggestedWeight}kg` : logs.length > 0 ? `${logs[0].weight}kg` : "Kg..."} className={`flex-1 min-w-0 border rounded-xl p-3 text-sm font-bold outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"}`} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localW} onChange={e => setLocalW(e.target.value)} />
+            <input type="number" placeholder={logs.length > 0 ? String(logs[0].reps) : "Reps"} className={`w-16 shrink-0 border rounded-xl p-3 text-sm font-bold text-center outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"}`} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localR} onChange={e => setLocalR(e.target.value)} />
             <button onClick={() => setShowCalc(!showCalc)} className={`px-3 shrink-0 rounded-xl transition-all shadow-md border ${isAdmin ? (showCalc ? "bg-amber-500 text-black border-amber-500" : "bg-zinc-800 text-zinc-400 border-zinc-700") : (showCalc ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-400 border-gray-200")}`}><Calculator size={20}/></button>
             <button onClick={handleAdd} className={`px-4 shrink-0 rounded-xl transition-all active:scale-95 shadow-md ${isAdmin ? "bg-amber-500 text-black" : "bg-gray-900 text-white"}`}><PlusCircle size={20}/></button>
           </div>
@@ -771,7 +1008,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [currentClientId, setCurrentClientId] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [sessionStart, setSessionStart] = useState(null);
+  const [sessionStart, setSessionStart] = useState(() => {
+    const saved = sessionStorage.getItem('athlos_session_start');
+    return saved ? parseInt(saved) : null;
+  });
   const [sessionElapsed, setSessionElapsed] = useState(0);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [exitAttemptTime, setExitAttemptTime] = useState(null);
@@ -779,6 +1019,10 @@ export default function App() {
   const [targetDayId, setTargetDayId] = useState("");
   const [editingClientId, setEditingClientId] = useState(null);
   const [editingDayId, setEditingDayId] = useState(null);
+  const [draggedDayId, setDraggedDayId] = useState(null);
+  const [dragOverDayId, setDragOverDayId] = useState(null);
+  const [touchDragState, setTouchDragState] = useState(null);
+  const touchTimerRef = useRef(null);
   const [selectedExerciseTemplate, setSelectedExerciseTemplate] = useState("");
   const [selectedMusculoGroup, setSelectedMusculoGroup] = useState("");
   const [newEx, setNewEx] = useState({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
@@ -795,8 +1039,10 @@ export default function App() {
   const [pwdError, setPwdError] = useState("");
   const [pwdSuccess, setPwdSuccess] = useState("");
   const [loadingAiNoteId, setLoadingAiNoteId] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [chartMode, setChartMode] = useState('weight');
+  const [showMotivationalModal, setShowMotivationalModal] = useState(false);
 
   // Biblioteca de ejercicios personalizados del entrenador
   const [customExercises, setCustomExercises] = useState([]);
@@ -820,6 +1066,13 @@ export default function App() {
   // Image Manager modal
   const [imageManagerOpen, setImageManagerOpen] = useState(false);
   const [imageManagerTarget, setImageManagerTarget] = useState({ dayId: null, exName: '' });
+  const [newExImageMode, setNewExImageMode] = useState(false);
+  const [addingNewMusGroup, setAddingNewMusGroup] = useState(false);
+  const [customExerciseImages, setCustomExerciseImages] = useState({});
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [expandedStatsExercise, setExpandedStatsExercise] = useState(null);
+  const [daySearchQuery, setDaySearchQuery] = useState("");
   
   // Admin visual editor states
   const [adminEditingExIdx, setAdminEditingExIdx] = useState(null);
@@ -830,6 +1083,7 @@ export default function App() {
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
   const lastAppliedUpdateRef = useRef({});
+  const adminBlurTimerRef = useRef(null);
   const initialSetupDoneRef = useRef(false);
 
   // RED Y FIREBASE
@@ -875,7 +1129,7 @@ export default function App() {
       
       const { valid, decoded } = await verifyToken(token);
       if (!valid) {
-        console.warn("JWT token invalid or expired - clearing session");
+        warn("JWT token invalid or expired - clearing session");
         clearToken();
         setLoggedInUser(null);
         setDataLoaded(true);
@@ -884,10 +1138,10 @@ export default function App() {
       
       const userId = decoded?.sub;
       if (userId) {
-        console.log("Session restored from JWT:", userId);
+        log("Session restored from JWT:", userId);
         setLoggedInUser(userId);
       } else {
-        console.warn("JWT token valid but no userId found");
+        warn("JWT token valid but no userId found");
         setLoggedInUser(null);
       }
       
@@ -900,7 +1154,7 @@ export default function App() {
   const updateUserInCloud = useCallback((userId, modifierFn) => {
     setDb(prev => {
       const current = prev[userId] || INITIAL_DB[userId] || { workoutData: { days: [] }, logs: {}, notes: [] };
-      const cloned = JSON.parse(JSON.stringify(current));
+      const cloned = structuredClone(current);
       const next = modifierFn(cloned);
       
       // Crear hash simple para detectar si es la misma actualización
@@ -912,9 +1166,9 @@ export default function App() {
         // With Firestore persistence, setDoc queues locally offline and syncs when back online
         setIsSyncing(true);
         if (db_cloud) {
-          setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch((err) => { console.error('❌ Firestore write error for', userId, ':', err.message); setIsSyncing(false); });
+          setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch((writeErr) => { err('❌ Firestore write error for', userId, ':', writeErr.message); setIsSyncing(false); });
         } else {
-          console.warn('⚠️ Firestore not initialized, data saved locally only');
+          warn('⚠️ Firestore not initialized, data saved locally only');
           setIsSyncing(false);
         }
       }
@@ -978,42 +1232,47 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     if (!newExercise.name) return;
-    // Evitar duplicados por nombre
-    const exists = customExercises.findIndex(e => e.name.toLowerCase() === newExercise.name.toLowerCase());
-    let updated;
-    if (exists > -1) {
-      updated = [...customExercises];
-      updated[exists] = { ...updated[exists], ...newExercise };
-    } else {
-      updated = [newExercise, ...customExercises];
-    }
-    setCustomExercises(updated);
-    localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
-    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
-      updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
-    }
-    showSuccess(exists > -1 ? 'Ejercicio actualizado en tu biblioteca 📚' : 'Ejercicio guardado en tu biblioteca 📚');
-  }, [customExercises, loggedInUser, updateUserInCloud, showSuccess]);
+    setCustomExercises(prev => {
+      const exists = prev.findIndex(e => e.name.toLowerCase() === newExercise.name.toLowerCase());
+      let updated;
+      if (exists > -1) {
+        updated = [...prev];
+        updated[exists] = { ...updated[exists], ...newExercise };
+      } else {
+        updated = [newExercise, ...prev];
+      }
+      localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
+      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+        updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
+      }
+      showSuccess(exists > -1 ? 'Ejercicio actualizado en tu biblioteca 📚' : 'Ejercicio guardado en tu biblioteca 📚');
+      return updated;
+    });
+  }, [loggedInUser, updateUserInCloud, showSuccess]);
 
   const deleteCustomExercise = useCallback((idx) => {
-    const updated = customExercises.filter((_, i) => i !== idx);
-    setCustomExercises(updated);
-    localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
-    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
-      updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
-    }
+    setCustomExercises(prev => {
+      const updated = prev.filter((_, i) => i !== idx);
+      localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
+      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+        updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
+      }
+      return updated;
+    });
     showSuccess('Ejercicio eliminado de la biblioteca');
-  }, [customExercises, loggedInUser, updateUserInCloud, showSuccess]);
+  }, [loggedInUser, updateUserInCloud, showSuccess]);
 
   const updateCustomExercise = useCallback((idx, updatedData) => {
-    const updated = [...customExercises];
-    updated[idx] = { ...updated[idx], ...updatedData, name: sanitizeInput(updatedData.name || updated[idx].name, 50) };
-    setCustomExercises(updated);
-    localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
-    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
-      updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
-    }
-  }, [customExercises, loggedInUser, updateUserInCloud]);
+    setCustomExercises(prev => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], ...updatedData, name: sanitizeInput(updatedData.name || updated[idx].name, 50) };
+      localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
+      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+        updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
+      }
+      return updated;
+    });
+  }, [loggedInUser, updateUserInCloud]);
 
   // Liberar bloqueo de login cuando expira
   useEffect(() => {
@@ -1037,7 +1296,7 @@ export default function App() {
     // Reset dataLoaded para que el check de seguridad espere a onSnapshot
     setDataLoaded(false);
     if (!db_cloud) {
-      console.error('⚠️ Firestore not available, using initial data only');
+      err('⚠️ Firestore not available, using initial data only');
       setDb(INITIAL_DB);
       setDataLoaded(true);
       return;
@@ -1059,16 +1318,16 @@ export default function App() {
       if (Object.keys(cloud).length === 0) {
          if (isFromCache) {
            // Caché vacía (ej: APK recién instalado) - NO escribir INITIAL_DB al servidor
-           console.log('⏳ Cache vacía, esperando datos del servidor...');
+           log('⏳ Cache vacía, esperando datos del servidor...');
            setDb(INITIAL_DB);
            setDataLoaded(true);
            return;
          }
          // Servidor confirmó que la colección está vacía - primera vez, poblar con INITIAL_DB
-         console.log('🆕 Colección vacía confirmada por servidor, inicializando...');
+         log('🆕 Colección vacía confirmada por servidor, inicializando...');
          Object.keys(INITIAL_DB).forEach(k => {
            if (!deletedList.includes(k)) {
-             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync error:", err));
+             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync error:", syncErr));
              cloud[k] = INITIAL_DB[k];
            }
          });
@@ -1078,12 +1337,12 @@ export default function App() {
            Object.keys(INITIAL_DB).forEach(k => {
              if (deletedList.includes(k)) return; // Fue eliminado intencionalmente, NO re-agregar
              if (!cloud[k]) {
-               setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(err => console.warn("Sync missing user error:", err));
+               setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync missing user error:", syncErr));
                cloud[k] = INITIAL_DB[k];
              } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
                if (INITIAL_DB[k]) {
                  cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
-                 setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(err => console.warn("Sync workout error:", err));
+                 setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(syncErr => warn("Sync workout error:", syncErr));
                }
              }
            });
@@ -1091,14 +1350,21 @@ export default function App() {
       }
       setDb(cloud);
       setDataLoaded(true);
-    }, (err) => {
-      console.warn("Firebase Snapshot Error:", err);
+    }, (snapErr) => {
+      warn("Firebase Snapshot Error:", snapErr);
       setDb(INITIAL_DB);
       setDataLoaded(true);
     });
 
     return () => unsub();
   }, [loggedInUser]);
+
+  // Sync motivacional phrase in real-time for clients (onSnapshot updates db)
+  useEffect(() => {
+    if (!loggedInUser || loggedInUser === 'entrenador' || loggedInUser === 'coach') return;
+    const coachPhrase = db['entrenador']?.currentMotivationalPhrase;
+    if (coachPhrase) setDailyMotivationalPhrase(coachPhrase);
+  }, [db, loggedInUser]);
 
   // Resetear estados cuando cambia el día que se edita
   useEffect(() => {
@@ -1127,20 +1393,29 @@ export default function App() {
         }
       
         // Load motivational phrases
-        const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
-        if (savedPhrases) {
-          try {
-            const phrases = JSON.parse(savedPhrases);
-            setAllMotivationalPhrases(phrases);
-            if (phrases.length > 0) {
-              setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
+        const isCoach = loggedInUser === 'entrenador' || loggedInUser === 'coach';
+        if (isCoach) {
+          const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
+          if (savedPhrases) {
+            try {
+              const phrases = JSON.parse(savedPhrases);
+              setAllMotivationalPhrases(phrases);
+              if (phrases.length > 0) {
+                setDailyMotivationalPhrase(phrases[0].text || phrases[0]);
+              }
+            } catch (e) {
+              warn('Failed to parse motivational phrases:', e.message);
             }
-          } catch (e) {
-            console.warn('Failed to parse motivational phrases:', e.message);
+          } else if (db[loggedInUser]?.motivationalPhrases) {
+            setAllMotivationalPhrases(db[loggedInUser].motivationalPhrases);
+            setDailyMotivationalPhrase(db[loggedInUser].currentMotivationalPhrase || 'La consistencia es la clave del éxito 💪');
           }
-        } else if (db[loggedInUser]?.motivationalPhrases) {
-          setAllMotivationalPhrases(db[loggedInUser].motivationalPhrases);
-          setDailyMotivationalPhrase(db[loggedInUser].currentMotivationalPhrase || 'La consistencia es la clave del éxito 💪');
+        } else {
+          // Clientes: leer frase del entrenador desde Firestore (tiempo real via onSnapshot)
+          const coachData = db['entrenador'];
+          if (coachData?.currentMotivationalPhrase) {
+            setDailyMotivationalPhrase(coachData.currentMotivationalPhrase);
+          }
         }
 
         // Cargar biblioteca de ejercicios personalizados del entrenador
@@ -1150,10 +1425,31 @@ export default function App() {
             try {
               setCustomExercises(JSON.parse(savedCustomEx));
             } catch (e) {
-              console.warn('Failed to parse custom exercises:', e.message);
+              warn('Failed to parse custom exercises:', e.message);
             }
           } else if (db[loggedInUser]?.customExercises) {
             setCustomExercises(db[loggedInUser].customExercises);
+          }
+          // Cargar imágenes personalizadas de ejercicios predefinidos
+          const savedImgOverrides = localStorage.getItem('athlos_custom_exercise_images');
+          if (savedImgOverrides) {
+            try {
+              setCustomExerciseImages(JSON.parse(savedImgOverrides));
+            } catch (e) {
+              warn('Failed to parse custom exercise images:', e.message);
+            }
+          } else if (db[loggedInUser]?.customExerciseImages) {
+            setCustomExerciseImages(db[loggedInUser].customExerciseImages);
+          }
+        }
+
+        // Onboarding para clientes nuevos (sin logs aún)
+        if (loggedInUser !== 'entrenador' && loggedInUser !== 'coach') {
+          const clientLogs = db[loggedInUser]?.logs || {};
+          const hasAnyLogs = Object.values(clientLogs).some(arr => Array.isArray(arr) && arr.length > 0);
+          const onboardingSeen = localStorage.getItem(`athlos_onboarding_${loggedInUser}`);
+          if (!hasAnyLogs && !onboardingSeen) {
+            setShowOnboarding(true);
           }
         }
       }
@@ -1195,6 +1491,7 @@ export default function App() {
   }, [dataLoaded, db, currentClientId, loggedInUser]);
 
   const authenticate = async () => {
+    if (isAuthenticating) return;
     // Rate limiting: bloquear después de 5 intentos fallidos por 5 minutos
     if (loginLockedUntil && Date.now() < loginLockedUntil) {
       const minutesLeft = Math.ceil((loginLockedUntil - Date.now()) / 60000);
@@ -1205,16 +1502,24 @@ export default function App() {
     setLoginError("");
     const input = loginUser.toLowerCase().trim();
     if (!input) return;
+    setIsAuthenticating(true);
     try {
       let user = null;
       // 🔐 Siempre obtener datos más recientes de Firestore al estar online
-      // Esto asegura que las contraseñas cambiadas/reseteadas se reconozcan
-      if (navigator.onLine) {
+      // Usar getDocFromServer para evitar datos en caché obsoletos (contraseñas cambiadas)
+      if (navigator.onLine && db_cloud) {
          try {
-           const snap = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
+           const snap = await getDocFromServer(doc(db_cloud, COLLECTION_NAME, input));
            if (snap.exists()) user = snap.data();
-         } catch (fetchErr) {
-           console.warn("Error fetching from Firestore, using local data:", fetchErr.message);
+         } catch (serverErr) {
+           // Si falla el servidor, intentar con caché
+           warn("Server fetch failed, trying cache:", serverErr.message);
+           try {
+             const snapCache = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
+             if (snapCache.exists()) user = snapCache.data();
+           } catch (cacheErr) {
+             warn("Cache fetch also failed:", cacheErr.message);
+           }
          }
       }
       // Fallback a datos locales si Firestore no disponible
@@ -1237,9 +1542,9 @@ export default function App() {
             try {
               const newHash = await hashPassword(loginPass);
               await setDoc(doc(db_cloud, COLLECTION_NAME, input), { ...user, password: newHash });
-              console.log("🔐 Contraseña migrada a bcrypt para:", input);
+              log("🔐 Contraseña migrada a bcrypt para:", input);
             } catch (migrateErr) {
-              console.warn("⚠️ No se pudo migrar contraseña:", migrateErr.message);
+              warn("⚠️ No se pudo migrar contraseña:", migrateErr.message);
             }
           }
         }
@@ -1256,25 +1561,29 @@ export default function App() {
         
         // 🔐 Generate and store JWT token
         try {
-          const tokenHours = keepLoggedIn ? 720 : 24; // 30 days if keep session, 24h otherwise
+          const tokenHours = keepLoggedIn ? TOKEN_HOURS_KEEP : TOKEN_HOURS_DEFAULT;
           const token = await generateToken(input, tokenHours);
           storeToken(token, keepLoggedIn);
           setLoginError(""); // Clear any error
         } catch (tokenError) {
-          console.warn("⚠️ Token generation warning:", tokenError.message);
+          warn("⚠️ Token generation warning:", tokenError.message);
           // Fallback: still allow login even if token fails
         }
       } else { 
         const newAttempts = loginAttempts + 1;
         setLoginAttempts(newAttempts);
-        if (newAttempts >= 5) {
-          setLoginLockedUntil(Date.now() + 5 * 60 * 1000); // Bloquear por 5 minutos
-          setLoginError("Cuenta bloqueada por 5 minutos después de 5 intentos fallidos");
+        if (newAttempts >= LOGIN_MAX_ATTEMPTS) {
+          // Bloqueo exponencial: 5min, 15min, 30min según número de bloqueos consecutivos
+          const lockMultiplier = Math.min(Math.pow(2, Math.floor(newAttempts / LOGIN_MAX_ATTEMPTS) - 1), 6);
+          const lockDuration = LOGIN_LOCKOUT_BASE_MS * lockMultiplier;
+          const lockMinutes = Math.ceil(lockDuration / 60000);
+          setLoginLockedUntil(Date.now() + lockDuration);
+          setLoginError(`Cuenta bloqueada por ${lockMinutes} minuto(s) tras ${newAttempts} intentos fallidos`);
         } else {
-          setLoginError(`Usuario o contraseña incorrectos (${newAttempts}/5)`);
+          setLoginError(`Usuario o contraseña incorrectos (${newAttempts}/${LOGIN_MAX_ATTEMPTS})`);
         }
       }
-    } catch (e) { setLoginError("Error de red: " + e.message); }
+    } catch (e) { setLoginError("Error de red: " + e.message); } finally { setIsAuthenticating(false); }
   };
 
   const changePassword = async () => {
@@ -1286,7 +1595,7 @@ export default function App() {
     
     // Validar que la nueva contraseña sea fuerte
     if (!validatePassword(pwdNew)) {
-      setPwdError("La contraseña debe tener al menos 6 caracteres sin espacios");
+      setPwdError("Mínimo 8 caracteres, al menos una letra y un número");
       return;
     }
     
@@ -1312,7 +1621,19 @@ export default function App() {
     // Hash nueva contraseña antes de guardar
     try {
       const newHash = await hashPassword(pwdNew);
-      updateUserInCloud(loggedInUser, u => ({ ...u, password: newHash }));
+      // Escribir directamente a Firestore y ESPERAR confirmación
+      if (db_cloud && navigator.onLine) {
+        const userRef = doc(db_cloud, COLLECTION_NAME, loggedInUser);
+        const currentSnap = await getDocFromServer(userRef);
+        if (currentSnap.exists()) {
+          await setDoc(userRef, { ...currentSnap.data(), password: newHash });
+        }
+      }
+      // Actualizar estado local
+      setDb(prev => ({
+        ...prev,
+        [loggedInUser]: { ...(prev[loggedInUser] || {}), password: newHash }
+      }));
       setPwdError("");
       setPwdSuccess("Contraseña actualizada correctamente ✓");
       setTimeout(() => {
@@ -1323,12 +1644,41 @@ export default function App() {
         setShowPasswordModal(false);
       }, 2000);
     } catch (error) {
-      console.error("Error hashing password:", error);
+      err("Error hashing password:", error);
       setPwdError("Error al actualizar contraseña. Intenta de nuevo.");
     }
   };
 
+  // 🔐 Session inactivity timeout (30 min)
+  const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+  const inactivityTimerRef = useRef(null);
+  useEffect(() => {
+    if (!loggedInUser || isAdminMode) return;
+    const resetTimer = () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = setTimeout(() => {
+        initialSetupDoneRef.current = false;
+        setLoggedInUser(null);
+        setIsAdminMode(false);
+        clearToken();
+        localStorage.removeItem("athlos_session_final");
+        sessionStorage.removeItem("athlos_session_final");
+        sessionStorage.removeItem("athlos_session_start");
+        setDataLoaded(false);
+        showToast('Sesión cerrada por inactividad', 'info');
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+    const events = ['click', 'keydown', 'scroll', 'touchstart', 'mousemove'];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer();
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [loggedInUser, isAdminMode]);
+
   const signOutUser = () => {
+    if (!window.confirm('¿Seguro que quieres cerrar sesión?')) return;
     initialSetupDoneRef.current = false;
     setLoggedInUser(null); 
     setIsAdminMode(false); 
@@ -1339,9 +1689,19 @@ export default function App() {
     setActiveTab("home");
     // 🔐 Clear JWT token instead of plaintext session
     clearToken();
-    // Keep old session removal for backward compatibility
+    // Clear ALL user-specific storage
     localStorage.removeItem("athlos_session_final"); 
     sessionStorage.removeItem("athlos_session_final");
+    sessionStorage.removeItem("athlos_session_start");
+    // Limpiar datos específicos del usuario
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('athlos_palette_') || key.startsWith('athlos_custom_') || key.startsWith('athlos_motivational'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
     setDataLoaded(false);
   };
 
@@ -1391,8 +1751,7 @@ export default function App() {
       }
       return { ...u, workoutData: { ...u.workoutData, days } }; 
     });
-    setToast({ type: "SUCCESS", message: "Ejercicio borrado" }); 
-    setTimeout(() => setToast(null), 2500);
+    showSuccess("Ejercicio borrado");
   };
 
   const removeDayFromRoutine = (dayId) => {
@@ -1403,16 +1762,57 @@ export default function App() {
       return { ...u, workoutData: { ...u.workoutData, days: filtered } };
     });
     setEditingDayId(null);
-    setToast({ type: "SUCCESS", message: "Día eliminado" }); 
-    setTimeout(() => setToast(null), 2500);
+    showSuccess("Día eliminado");
   };
+
+  // Drag & Drop reorder days
+  const reorderDays = useCallback((fromId, toId) => {
+    if (fromId === toId) return;
+    const targetClientId = editingClientId || currentClientId;
+    updateUserInCloud(targetClientId, u => {
+      const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])];
+      const fromIdx = days.findIndex(d => d.id === fromId);
+      const toIdx = days.findIndex(d => d.id === toId);
+      if (fromIdx === -1 || toIdx === -1) return u;
+      const [moved] = days.splice(fromIdx, 1);
+      days.splice(toIdx, 0, moved);
+      return { ...u, workoutData: { ...u.workoutData, days } };
+    });
+  }, [editingClientId, currentClientId, updateUserInCloud]);
+
+  const handleDayTouchStart = useCallback((e, dayId) => {
+    touchTimerRef.current = setTimeout(() => {
+      setTouchDragState(dayId);
+      setDraggedDayId(dayId);
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 400);
+  }, []);
+
+  const handleDayTouchMove = useCallback((e) => {
+    if (!touchDragState) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const dayEl = el?.closest('[data-day-id]');
+    if (dayEl) setDragOverDayId(Number(dayEl.dataset.dayId));
+  }, [touchDragState]);
+
+  const handleDayTouchEnd = useCallback(() => {
+    clearTimeout(touchTimerRef.current);
+    if (touchDragState && dragOverDayId && touchDragState !== dragOverDayId) {
+      reorderDays(touchDragState, dragOverDayId);
+    }
+    setTouchDragState(null);
+    setDraggedDayId(null);
+    setDragOverDayId(null);
+  }, [touchDragState, dragOverDayId, reorderDays]);
 
   const selectExerciseTemplate = (exName, fromAthlos = false) => {
     const source = fromAthlos ? ATHLOS_FORGE_EXERCISES : EJERCICIOS_PREDEFINIDOS;
     const template = source.find(e => e.name === exName);
     if (template) {
       const tip = template.coaching || template.tip || "";
-      setNewEx({ name: template.name, s: 3, r: "12", tip: tip, mus: template.mus, yt: template.yt, img: template.img });
+      setNewEx({ name: template.name, s: 3, r: "12", tip: tip, mus: template.mus, yt: template.yt, img: customExerciseImages[template.name] || template.img });
       setSelectedExerciseTemplate(exName);
     }
   };
@@ -1431,23 +1831,22 @@ export default function App() {
       if (!current.includes(userId)) {
         await setDoc(metaRef, { ids: [...current, userId] });
       }
-    } catch (err) { console.warn('Error tracking deleted user:', err); }
+    } catch (e) { warn('Error tracking deleted user:', e); }
   };
 
   const removeClientAccount = async () => {
     if (currentClientId === 'entrenador' || currentClientId === 'coach') return;
     setIsSyncing(true);
     await trackDeletedUser(currentClientId);
-    await deleteDoc(doc(db_cloud, COLLECTION_NAME, currentClientId)).catch(()=>{});
+    if (db_cloud) await deleteDoc(doc(db_cloud, COLLECTION_NAME, currentClientId)).catch(()=>{});
     setDb(prev => { const n = {...prev}; delete n[currentClientId]; return n; });
     setCurrentClientId('entrenador'); setIsSyncing(false);
-    setToast({ type: "SUCCESS", message: "Cliente eliminado" }); setTimeout(() => setToast(null), 2500);
+    showSuccess("Cliente eliminado");
   };
 
   const deleteClientFromAdmin = async (clientId) => {
     if (clientId === 'entrenador' || clientId === 'coach') {
-      setToast({ type: "ERROR", message: "No puedes eliminar el admin" }); 
-      setTimeout(() => setToast(null), 2500);
+      showError("No puedes eliminar el admin");
       return;
     }
     
@@ -1466,7 +1865,7 @@ export default function App() {
       
       // Registrar como eliminado y luego borrar de Firebase
       await trackDeletedUser(clientId);
-      if (navigator.onLine) {
+      if (db_cloud && navigator.onLine) {
         await deleteDoc(doc(db_cloud, COLLECTION_NAME, clientId)).catch(()=>{});
       }
       
@@ -1480,20 +1879,17 @@ export default function App() {
       setIsSyncing(false);
       setShowDeleteConfirmModal(false);
       setClientToDelete(null);
-      setToast({ type: "SUCCESS", message: `${clientId} eliminado permanentemente` }); 
-      setTimeout(() => setToast(null), 2500);
-    } catch (err) {
+      showSuccess(`${clientId} eliminado permanentemente`);
+    } catch (e) {
       setIsSyncing(false);
-      setToast({ type: "ERROR", message: "Error al eliminar cliente" }); 
-      setTimeout(() => setToast(null), 2500);
+      showError("Error al eliminar cliente");
     }
   };
 
   // RESTAURAR DATOS DESDE FIRESTORE (botón de emergencia para el admin)
   const forceReloadFromServer = async () => {
     if (!db_cloud) {
-      setToast({ type: "ERROR", message: "Firestore no disponible" });
-      setTimeout(() => setToast(null), 2500);
+      showError("Firestore no disponible");
       return;
     }
     setIsForceReloading(true);
@@ -1509,16 +1905,15 @@ export default function App() {
       });
       if (Object.keys(cloud).length > 0) {
         setDb(cloud);
-        setToast({ type: "SUCCESS", message: `✅ Datos restaurados del servidor (${Object.keys(cloud).filter(k => k !== 'entrenador').length} clientes)` });
+        showSuccess(`Datos restaurados del servidor (${Object.keys(cloud).filter(k => k !== 'entrenador').length} clientes)`);
       } else {
-        setToast({ type: "ERROR", message: "No se encontraron datos en el servidor" });
+        showError("No se encontraron datos en el servidor");
       }
-    } catch (err) {
-      console.error('Error al restaurar:', err);
-      setToast({ type: "ERROR", message: "Error de conexión con el servidor" });
+    } catch (e) {
+      err('Error al restaurar:', e);
+      showError("Error de conexión con el servidor");
     }
     setIsForceReloading(false);
-    setTimeout(() => setToast(null), 3000);
   };
 
   const addLogRecord = useCallback((exName, weight, reps) => {
@@ -1527,34 +1922,32 @@ export default function App() {
     const validatedReps = safeParseReps(reps);
     
     if (validatedWeight === 0 && validatedReps === 0) {
-      setToast({ type: "ERROR", message: "Peso o reps inválidos" });
-      setTimeout(() => setToast(null), 2000);
+      showError("Peso o reps inválidos");
       return;
     }
     
-    const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    const dateStr = formatDateLog();
     const logEntry = { weight: validatedWeight, reps: validatedReps, date: dateStr, id: Date.now() };
     
     // Validate log structure with AJV
     const validation = validateLogAJV(logEntry);
     if (!validation.valid) {
-      console.warn("⚠️ Log validation failed:", validation.errors);
-      setToast({ type: "ERROR", message: "Datos inválidos" });
-      setTimeout(() => setToast(null), 2000);
+      warn("⚠️ Log validation failed:", validation.errors);
+      showError("Datos inválidos");
       return;
     }
     
     updateUserInCloud(currentClientId, (u) => {
       const logs = u.logs || {};
-      return { ...u, logs: { ...logs, [sanitizeInput(exName)]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, 15) } };
+      return { ...u, logs: { ...logs, [sanitizeInput(exName)]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, MAX_LOG_ENTRIES) } };
     });
-    setToast({ type: "SUCCESS", message: `Serie registrada` }); setTimeout(() => setToast(null), 2000);
+    showSuccess("Serie registrada");
   }, [currentClientId, updateUserInCloud]);
 
   const deleteLogRecord = useCallback((exName, logId) => updateUserInCloud(currentClientId, u => ({ ...u, logs: { ...u.logs, [exName]: (Array.isArray(u.logs?.[exName]) ? u.logs[exName] : []).filter(l => l.id !== logId) } })), [currentClientId, updateUserInCloud]);
   
   const addExerciseNote = useCallback((exName, noteText) => {
-    const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    const dateStr = formatDateLog();
     const sanitized = sanitizeInput(noteText);
     if (!sanitized.trim()) return;
     updateUserInCloud(currentClientId, (u) => {
@@ -1570,7 +1963,7 @@ export default function App() {
     const sanitized = sanitizeInput(noteText, 500);
     if (!sanitized.trim()) return;
     
-    const dateStr = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    const dateStr = formatDateLog();
     const noteEntry = { text: sanitized, date: dateStr, id: Date.now() };
     
     updateUserInCloud(currentClientId, (u) => ({ 
@@ -1600,8 +1993,8 @@ export default function App() {
       setAdminResetError("Todos los campos son obligatorios");
       return;
     }
-    if (adminResetPwd.length < 6) {
-      setAdminResetError("La contraseña debe tener al menos 6 caracteres");
+    if (!validatePassword(adminResetPwd)) {
+      setAdminResetError("Mínimo 8 caracteres, al menos una letra y un número");
       return;
     }
     if (adminResetPwd !== adminResetPwdConfirm) {
@@ -1610,7 +2003,22 @@ export default function App() {
     }
     try {
       const newHash = await hashPassword(adminResetPwd);
-      updateUserInCloud(clientInfoTarget, u => ({ ...u, password: newHash }));
+      // Escribir directamente a Firestore y ESPERAR confirmación
+      if (db_cloud && navigator.onLine) {
+        const userRef = doc(db_cloud, COLLECTION_NAME, clientInfoTarget);
+        const currentSnap = await getDocFromServer(userRef);
+        if (currentSnap.exists()) {
+          await setDoc(userRef, { ...currentSnap.data(), password: newHash });
+        } else {
+          setAdminResetError("Usuario no encontrado en la base de datos");
+          return;
+        }
+      }
+      // Actualizar también el estado local
+      setDb(prev => ({
+        ...prev,
+        [clientInfoTarget]: { ...(prev[clientInfoTarget] || {}), password: newHash }
+      }));
       setAdminResetError("");
       setAdminResetSuccess("Contraseña actualizada correctamente ✓");
       setTimeout(() => {
@@ -1619,12 +2027,14 @@ export default function App() {
         setAdminResetSuccess("");
       }, 2000);
     } catch (error) {
-      setAdminResetError("Error al actualizar contraseña");
+      err("Error al resetear contraseña:", error);
+      setAdminResetError("Error al actualizar contraseña: " + error.message);
     }
   };
 
   const startTimerHook = useCallback((s) => { setTimerDuration(s); setTimerKey((k) => k + 1); }, []);
-  const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); window.scrollTo(0,0); };
+  const openImageManagerCb = useCallback((dayId, exName) => { setImageManagerTarget({ dayId, exName }); setImageManagerOpen(true); }, []);
+  const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); setDaySearchQuery(""); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const updateImageHook = useCallback((dayId, exName, newImgBase64) => {
     const targetClientId = editingClientId || currentClientId;
@@ -1638,7 +2048,17 @@ export default function App() {
       }
       return { ...u, workoutData: { ...u.workoutData, days } };
     });
-  }, [editingClientId, currentClientId, updateUserInCloud]);
+    // Persistir imagen custom para ejercicios predefinidos (usar functional update para evitar stale closure)
+    const isPredefined = [...EJERCICIOS_PREDEFINIDOS, ...ATHLOS_FORGE_EXERCISES].some(e => e.name === exName);
+    if (isPredefined && (loggedInUser === 'entrenador' || loggedInUser === 'coach')) {
+      setCustomExerciseImages(prev => {
+        const updated = { ...prev, [exName]: newImgBase64 };
+        localStorage.setItem('athlos_custom_exercise_images', JSON.stringify(updated));
+        updateUserInCloud(loggedInUser, u => ({ ...u, customExerciseImages: updated }));
+        return updated;
+      });
+    }
+  }, [editingClientId, currentClientId, updateUserInCloud, loggedInUser]);
 
   // Body metrics stats (weight, body fat, bone mass)
   const addUserStats = useCallback(async (entry) => {
@@ -1657,15 +2077,16 @@ export default function App() {
   }, [currentClientId, updateUserInCloud]);
 
   const runCreateProfile = async () => {
+    if (isCreatingProfile) return;
     const name = sanitizeInput(newClient.name).trim();
     const username = sanitizeInput(newClient.username).trim().toLowerCase();
     const password = newClient.password;
     
-    if (!name || !username || !password || password.length < 6) {
-      setToast({ type: "ERROR", message: "Datos inválidos o contraseña muy corta (mín. 6 caracteres)" }); 
-      setTimeout(() => setToast(null), 3000); 
+    if (!name || !username || !password || !validatePassword(password)) {
+      showError("Datos inválidos o contraseña débil (mín. 8 caracteres, letra + número)");
       return;
     }
+    setIsCreatingProfile(true);
     
     const id = username.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
     let sourceDays = [];
@@ -1677,7 +2098,7 @@ export default function App() {
     try {
       const hashedPassword = await hashPassword(password);
       const newUserData = {
-        username: username, password: hashedPassword, name: name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: JSON.parse(JSON.stringify(sourceDays)) }
+        username: username, password: hashedPassword, name: name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: structuredClone(sourceDays) }
       };
       
       // Escribir DIRECTAMENTE a Firestore y esperar confirmación
@@ -1685,7 +2106,7 @@ export default function App() {
         setIsSyncing(true);
         await setDoc(doc(db_cloud, COLLECTION_NAME, id), newUserData);
         setIsSyncing(false);
-        console.log("✅ Cliente creado en Firestore:", id);
+        log("✅ Cliente creado en Firestore:", id);
       }
       // Actualizar estado local también
       setDb(prev => ({ ...prev, [id]: newUserData }));
@@ -1693,24 +2114,31 @@ export default function App() {
       setNewClient({ name: "", username: "", password: "", sourceTemplate: "" });
       showSuccess("Cliente " + name + " creado ✓");
     } catch (error) {
-      console.error("❌ Error creando cliente:", error.message);
+      err("❌ Error creando cliente:", error.message);
       setIsSyncing(false);
-      setToast({ type: "ERROR", message: "Error al crear cuenta: " + error.message }); 
-      setTimeout(() => setToast(null), 4000);
+      showError("Error al crear cuenta: " + error.message);
+    } finally {
+      setIsCreatingProfile(false);
     }
   };
 
   useEffect(() => {
     let interval;
-    if (sessionStart) interval = setInterval(() => setSessionElapsed(Math.floor((Date.now() - sessionStart) / 1000)), 1000);
-    else setSessionElapsed(0);
+    if (sessionStart) {
+      sessionStorage.setItem('athlos_session_start', String(sessionStart));
+      interval = setInterval(() => setSessionElapsed(Math.floor((Date.now() - sessionStart) / 1000)), 1000);
+    } else {
+      sessionStorage.removeItem('athlos_session_start');
+      setSessionElapsed(0);
+    }
     return () => clearInterval(interval);
   }, [sessionStart]);
 
   const finishSession = () => { 
     const h = Math.floor(sessionElapsed / 3600), m = Math.floor((sessionElapsed % 3600) / 60);
-    setToast({ type: "SUCCESS", message: `¡COMPLETADO EN ${h>0?h+'h ':''}${m}m! 🎉` }); 
-    setSessionStart(null); setTimeout(() => setToast(null), 4000); navigateTo("home"); 
+    setShowConfetti(true);
+    showSuccess(`¡COMPLETADO EN ${h>0?h+'h ':''}${m}m! 🎉`);
+    setSessionStart(null); navigateTo("home"); 
   };
 
   // Manejo unificado del botón atrás (web only — native uses BackButtonExitHandler)
@@ -1775,7 +2203,7 @@ export default function App() {
             <input type="password" placeholder="Contraseña" className={`w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-left text-sm font-bold focus:outline-none focus:border-amber-500 transition-colors ${loginPass ? 'text-amber-500 tracking-[0.5em]' : 'text-zinc-600'}`} value={loginPass} onChange={(e) => setLoginPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && authenticate()} />
             <label className="flex items-center gap-2 text-zinc-400 text-xs font-bold pl-2 cursor-pointer mt-2"><input type="checkbox" checked={keepLoggedIn} onChange={(e) => setKeepLoggedIn(e.target.checked)} className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-amber-500 accent-amber-500" />Mantener sesión iniciada</label>
             {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
-            <button onClick={authenticate} className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4">Acceder</button>
+            <button onClick={authenticate} disabled={isAuthenticating} className={`w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4 ${isAuthenticating ? 'opacity-60' : ''}`}>{isAuthenticating ? <Loader2 className="animate-spin mx-auto" size={20}/> : 'Acceder'}</button>
           </div>
           <p className="text-center text-zinc-700 text-[9px] mt-10">Desarrollado por Sebas &copy; {new Date().getFullYear()} · v{APP_VERSION}</p>
         </div>
@@ -1793,6 +2221,8 @@ export default function App() {
 
   const client = db[currentClientId];
   const workoutLogs = client.logs || {};
+  const streakCount = useMemo(() => calculateStreak(workoutLogs), [workoutLogs]);
+  const weeklySummary = useMemo(() => getWeeklySummary(workoutLogs), [workoutLogs]);
   const dailyNotes = client.notes || [];
   const validDays = Array.isArray(client.workoutData?.days) ? client.workoutData.days : [];
   const validNotes = Array.isArray(client.notes) ? client.notes : [];
@@ -1804,7 +2234,7 @@ export default function App() {
         isEnabled={!!loggedInUser}
         canGoBack={selectedDay !== null || activeTab !== "home" || isEditingClientRoutine || editingDayId !== null}
         onNavigateBack={() => {
-          if (editingDayId !== null) { setEditingDayId(null); }
+          if (editingDayId !== null) { setEditingDayId(null); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setAddingNewMusGroup(false); setSelectedMusculoGroup(""); }
           else if (isEditingClientRoutine) { setIsEditingClientRoutine(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsAdminMode(true); }
           else if (selectedDay !== null) { setSelectedDay(null); }
           else { navigateTo("home"); }
@@ -1856,43 +2286,58 @@ export default function App() {
             </div>
 
             {isAdminMode && (
-              <div className="bg-zinc-900 p-8 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-8 mt-8">
-                <div className="flex justify-between items-center text-[10px] font-black uppercase text-zinc-500">
-                  <div className="flex items-center gap-2"><Users size={14} className="text-amber-500" /> Clientes</div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={forceReloadFromServer} disabled={isForceReloading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={isForceReloading ? 'animate-spin' : ''}/> {isForceReloading ? 'Cargando...' : 'Restaurar BD'}</button>
-                    <button onClick={() => setShowAddClientModal(true)} className="bg-zinc-800 text-amber-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1"><Plus size={12}/> Nuevo</button>
+              <div className="bg-zinc-900 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-6 mt-8">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500"><Users size={14} className="text-amber-500" /> Clientes ({Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').length})</div>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase">
+                    <button onClick={forceReloadFromServer} disabled={isForceReloading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={isForceReloading ? 'animate-spin' : ''}/> {isForceReloading ? '...' : 'Sync'}</button>
+                    <button onClick={() => setShowAddClientModal(true)} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
                   </div>
                 </div>
-                <div className="flex gap-6 overflow-x-auto scrollbar-hide pb-4">
-                  {Object.keys(db).filter(id => id !== 'entrenador').map(id => (
-                    <div key={id} className="flex flex-col items-center gap-2 shrink-0">
-                      <button onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${editingClientId === id ? 'bg-amber-500 text-black shadow-lg scale-105' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}>{String(db[id].name || id)}</button>
-                      <button onClick={() => { setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="text-zinc-600 hover:text-amber-500 transition-colors text-[8px] font-bold flex items-center gap-1"><Eye size={10}/> Info</button>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').map(id => {
+                    const c = db[id];
+                    const isSelected = editingClientId === id;
+                    const dayCount = Array.isArray(c.workoutData?.days) ? c.workoutData.days.length : 0;
+                    const logCount = Object.values(c.logs || {}).flat().length;
+                    return (
+                      <button key={id} onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }}
+                        className={`relative p-4 rounded-2xl border text-left transition-all active:scale-[0.97] ${isSelected ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-800'}`}>
+                        <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${String(c.color || 'from-blue-600 to-indigo-500')} flex items-center justify-center text-white text-xs font-black mb-2`}>
+                          {String(c.name || id).charAt(0).toUpperCase()}
+                        </div>
+                        <p className={`text-sm font-black truncate ${isSelected ? 'text-amber-500' : 'text-white'}`}>{String(c.name || id)}</p>
+                        <p className="text-[9px] text-zinc-500 truncate mt-0.5">{String(c.subtitle || '—')}</p>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-[8px] text-zinc-600 font-bold">{dayCount} días</span>
+                          <span className="text-[8px] text-zinc-600 font-bold">{logCount} logs</span>
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="absolute top-3 right-3 text-zinc-600 hover:text-amber-500 transition-colors"><Eye size={14}/></button>
+                      </button>
+                    );
+                  })}
                 </div>
                 
                 {editingClientId && db[editingClientId] && (
                   <div className="border-t border-zinc-800 pt-12 space-y-12 animate-in slide-in-from-top-4 mt-8">
                     {/* HEADER DEL CLIENTE */}
                     <div className={`bg-gradient-to-br ${String(db[editingClientId].color || "from-blue-600")} p-6 rounded-2xl text-white relative`}>
-                      <div className="absolute top-4 right-4 flex gap-2">
+                      <div className="flex justify-end gap-2 mb-5">
                         <button onClick={() => generatePDFReport(db[editingClientId], Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : [])} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Download size={14}/> PDF</button>
                         <button onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="bg-red-500/30 hover:bg-red-500/40 text-red-200 p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Trash2 size={14}/> Eliminar</button>
                       </div>
                       <div className="space-y-6">
                         <div>
                           <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Nombre</label>
-                          <input key={`name-${editingClientId}`} defaultValue={String(db[editingClientId].name || "")} maxLength="50" onBlur={e => updateUserInCloud(editingClientId, u => ({...u, name: sanitizeInput(e.target.value)}))} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-black text-lg outline-none" />
+                          <input key={`name-${editingClientId}`} defaultValue={String(db[editingClientId].name || "")} maxLength="50" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, name: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-black text-lg outline-none" />
                         </div>
                         <div>
                           <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Subtítulo</label>
-                          <input key={`subtitle-${editingClientId}`} defaultValue={String(db[editingClientId].subtitle || "")} maxLength="60" onBlur={e => updateUserInCloud(editingClientId, u => ({...u, subtitle: sanitizeInput(e.target.value)}))} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
+                          <input key={`subtitle-${editingClientId}`} defaultValue={String(db[editingClientId].subtitle || "")} maxLength="60" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, subtitle: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
                         </div>
                         <div>
                           <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Consejo Coach</label>
-                          <textarea key={`advice-${editingClientId}`} defaultValue={String(db[editingClientId].advice || "")} maxLength="150" onBlur={e => updateUserInCloud(editingClientId, u => ({...u, advice: sanitizeInput(e.target.value)}))} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
+                          <textarea key={`advice-${editingClientId}`} defaultValue={String(db[editingClientId].advice || "")} maxLength="150" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, advice: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
                         </div>
                       </div>
                     </div>
@@ -1901,7 +2346,7 @@ export default function App() {
                     <div className="space-y-6">
                       <div className="flex justify-between items-center">
                         <h4 className="text-[10px] font-black uppercase text-zinc-400">Días de Entrenamiento ({(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).length})</h4>
-                        {editingDayId && <button onClick={() => setEditingDayId(null)} className="text-amber-500 text-[9px] font-bold">← Volver</button>}
+                        {editingDayId && <button onClick={() => { setEditingDayId(null); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setAddingNewMusGroup(false); setSelectedMusculoGroup(""); }} className="text-amber-500 text-[9px] font-bold">← Volver</button>}
                       </div>
                       
                       {!editingDayId ? (
@@ -1953,7 +2398,7 @@ export default function App() {
                                 </div>
                               )}
                             </div>
-                            <button onClick={() => { if(newDay.title?.trim()) { updateUserInCloud(editingClientId, u => ({ ...u, workoutData: { ...u.workoutData, days: [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : []), { id: Date.now(), title: sanitizeInput(newDay.title), focus: sanitizeInput(newDay.focus), warmupType: newDay.warmupType, icon: newDay.icon, exercises: [] }] } })); setNewDay({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" }); setToast({ type: "SUCCESS", message: "Día creado ✨" }); setTimeout(() => setToast(null), 2500); } }} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Crear Día</button>
+                            <button onClick={() => { if(newDay.title?.trim()) { updateUserInCloud(editingClientId, u => ({ ...u, workoutData: { ...u.workoutData, days: [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : []), { id: Date.now(), title: sanitizeInput(newDay.title), focus: sanitizeInput(newDay.focus), warmupType: newDay.warmupType, icon: newDay.icon, exercises: [] }] } })); setNewDay({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" }); showSuccess("Día creado ✨"); } }} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Crear Día</button>
                           </div>
                         </>
                       ) : (
@@ -2002,7 +2447,7 @@ export default function App() {
                                     <div key={idx} className="bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg">
                                       {/* Imagen del ejercicio */}
                                       <div className="relative h-44 bg-zinc-800">
-                                        <img src={ex.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                        <img src={ex.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
                                         {/* Controles del ejercicio */}
                                         <div className="absolute top-3 left-3 flex gap-2">
@@ -2115,7 +2560,7 @@ export default function App() {
                                                   </div>
                                                 ) : (
                                                   <div className="flex items-center gap-3 bg-zinc-900 p-3 rounded-xl border border-amber-500/20">
-                                                    <img src={ce.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-12 h-12 rounded-xl object-cover shrink-0" loading="lazy" />
+                                                    <img src={ce.img || FALLBACK_IMG} alt="" className="w-12 h-12 rounded-xl object-cover shrink-0" loading="lazy" onError={imgError} />
                                                     <button onClick={() => {
                                                       const exToAdd = { name: ce.name, s: ce.s || 3, r: ce.r || "12", tip: ce.tip || "", mus: ce.mus || "", yt: ce.yt || "", img: ce.img || "" };
                                                       updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...exToAdd, name: sanitizeInput(exToAdd.name), mus: sanitizeInput(exToAdd.mus), tip: sanitizeInput(exToAdd.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; });
@@ -2141,7 +2586,7 @@ export default function App() {
                                       <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2">Ejercicios predefinidos:</p>
                                       <div className="flex flex-wrap gap-2">
                                         {GRUPOS_MUSCULARES.map(g => (
-                                          <button key={g} onClick={() => { setSelectedMusculoGroup(g); setSelectedExerciseTemplate(""); }} className={`text-[9px] font-bold px-3 py-1.5 rounded-full transition-all active:scale-95 ${selectedMusculoGroup === g ? 'bg-amber-500 text-black' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}>{g}</button>
+                                          <button key={g} onClick={() => { setSelectedMusculoGroup(g); setSelectedExerciseTemplate(""); }} className={`text-[9px] font-bold px-3 py-1.5 rounded-full transition-all active:scale-95 flex items-center gap-1 ${selectedMusculoGroup === g ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'}`}><span>{GRUPO_EMOJI[g] || '•'}</span> {g}</button>
                                         ))}
                                       </div>
                                     </div>
@@ -2151,14 +2596,15 @@ export default function App() {
                                       <div className="space-y-3 max-h-80 overflow-y-auto">
                                         {[...EJERCICIOS_PREDEFINIDOS, ...ATHLOS_FORGE_EXERCISES, ...customExercises].filter(e => e.mus === selectedMusculoGroup).filter((e, i, arr) => arr.findIndex(x => x.name === e.name) === i).map(tmpl => {
                                           const isCustom = customExercises.some(c => c.name === tmpl.name);
+                                          const resolvedImg = customExerciseImages[tmpl.name] || tmpl.img;
                                           return (
                                           <button key={tmpl.name} onClick={() => {
                                             const tip = tmpl.coaching || tmpl.tip || "";
-                                            const exToAdd = { name: tmpl.name, s: tmpl.s || 3, r: tmpl.r || "12", tip: tip, mus: tmpl.mus, yt: tmpl.yt, img: tmpl.img };
+                                            const exToAdd = { name: tmpl.name, s: tmpl.s || 3, r: tmpl.r || "12", tip: tip, mus: tmpl.mus, yt: tmpl.yt, img: resolvedImg };
                                             updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...exToAdd, name: sanitizeInput(exToAdd.name), mus: sanitizeInput(exToAdd.mus), tip: sanitizeInput(exToAdd.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; });
                                             showSuccess("Ejercicio agregado ✓");
                                           }} className="w-full flex items-center gap-3 bg-zinc-900 p-3 rounded-xl border border-zinc-700 hover:border-amber-500/50 active:scale-[0.98] transition-all text-left">
-                                            <img src={tmpl.img || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400'} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" loading="lazy" />
+                                            <img src={resolvedImg || FALLBACK_IMG} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" loading="lazy" onError={imgError} />
                                             <div className="flex-1 min-w-0">
                                               <p className="text-sm font-bold text-white truncate">{isCustom && <span className="text-amber-500 text-[8px] mr-1">📚</span>}{tmpl.name}</p>
                                               <p className="text-[9px] text-zinc-500">{tmpl.coaching || tmpl.tip || tmpl.mus}</p>
@@ -2172,8 +2618,52 @@ export default function App() {
                                     {/* Ejercicio personalizado */}
                                     <div className="border-t border-zinc-700 pt-4 space-y-3">
                                       <p className="text-[9px] text-zinc-500 font-bold uppercase">✏️ Crear ejercicio nuevo:</p>
+                                      
+                                      {/* Hero image area */}
+                                      <button onClick={() => { setNewExImageMode(true); setImageManagerTarget({ dayId: null, exName: newEx.name || 'Nuevo ejercicio' }); setImageManagerOpen(true); }} className="w-full relative rounded-2xl overflow-hidden active:scale-[0.98] transition-all group">
+                                        {newEx.img ? (
+                                          <div className="relative">
+                                            <img src={newEx.img} alt="" className="w-full h-32 object-cover" />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                                            <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                                              <Camera size={12} className="text-amber-500"/>
+                                              <span className="text-[9px] text-white font-bold">Cambiar</span>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="w-full h-28 border-2 border-dashed border-zinc-700 group-hover:border-amber-500/50 rounded-2xl flex flex-col items-center justify-center gap-2 bg-zinc-900/50 transition-colors">
+                                            <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                                              <Camera size={18} className="text-amber-500"/>
+                                            </div>
+                                            <span className="text-[10px] text-zinc-500 font-medium">Toca para añadir imagen</span>
+                                          </div>
+                                        )}
+                                      </button>
+
                                       <input type="text" placeholder="Nombre del ejercicio..." maxLength="50" className="w-full bg-zinc-900 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" value={newEx.name} onChange={e => setNewEx({...newEx, name: e.target.value})} />
-                                      <div className="grid grid-cols-3 gap-2">
+                                      
+                                      {/* Muscle group visual chips */}
+                                      <div>
+                                        <label className="text-[7px] text-zinc-600 uppercase font-bold block mb-1.5 ml-1">Grupo muscular</label>
+                                        {addingNewMusGroup ? (
+                                          <div className="flex gap-2 items-center">
+                                            <input type="text" placeholder="Nombre del nuevo grupo..." value={newEx.mus} onChange={e => setNewEx({...newEx, mus: e.target.value})} maxLength="30" className="flex-1 bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-amber-500 text-center" autoFocus />
+                                            <button onClick={() => setAddingNewMusGroup(false)} className="bg-amber-500 text-black font-bold text-[10px] px-3 py-2.5 rounded-xl active:scale-95">✓</button>
+                                            <button onClick={() => { setNewEx({...newEx, mus: ''}); setAddingNewMusGroup(false); }} className="text-zinc-500 text-[10px] font-bold px-2 py-2.5">✕</button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {GRUPOS_MUSCULARES.map(g => (
+                                              <button key={g} onClick={() => setNewEx({...newEx, mus: g})} className={`text-[9px] font-bold px-2.5 py-1.5 rounded-full transition-all active:scale-95 flex items-center gap-1 ${newEx.mus === g ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>
+                                                <span>{GRUPO_EMOJI[g] || '•'}</span> {g}
+                                              </button>
+                                            ))}
+                                            <button onClick={() => { setNewEx({...newEx, mus: ''}); setAddingNewMusGroup(true); }} className="text-[9px] font-bold px-2.5 py-1.5 rounded-full bg-zinc-800 text-zinc-500 hover:bg-zinc-700 active:scale-95 border border-dashed border-zinc-600">+ Nuevo</button>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-2">
                                         <div>
                                           <label className="text-[7px] text-zinc-600 uppercase font-bold block mb-0.5 ml-1">Series</label>
                                           <input type="number" placeholder="3" value={newEx.s} onChange={e => setNewEx({...newEx, s: parseInt(e.target.value) || 3})} className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700 text-center" />
@@ -2182,20 +2672,33 @@ export default function App() {
                                           <label className="text-[7px] text-zinc-600 uppercase font-bold block mb-0.5 ml-1">Reps</label>
                                           <input type="text" placeholder="12" value={newEx.r} onChange={e => setNewEx({...newEx, r: e.target.value})} className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700 text-center" />
                                         </div>
-                                        <div>
-                                          <label className="text-[7px] text-zinc-600 uppercase font-bold block mb-0.5 ml-1">Grupo</label>
-                                          <input type="text" placeholder="Pecho" value={newEx.mus} onChange={e => setNewEx({...newEx, mus: e.target.value})} maxLength="30" className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700 text-center" />
+                                      </div>
+                                      <input type="text" placeholder="💡 Tip / Consejo (ej: RIR 1, no bloquear codos...)" value={newEx.tip} onChange={e => setNewEx({...newEx, tip: e.target.value})} maxLength="200" className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700" />
+                                      <input type="url" placeholder="🎬 YouTube URL (opcional)" value={newEx.yt} onChange={e => setNewEx({...newEx, yt: e.target.value})} className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700" />
+                                      
+                                      {/* Live preview card */}
+                                      {newEx.name?.trim() && (
+                                        <div className="bg-zinc-900/80 rounded-2xl border border-amber-500/20 overflow-hidden">
+                                          <div className="px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/10">
+                                            <p className="text-[8px] text-amber-500 font-bold uppercase">Vista previa</p>
+                                          </div>
+                                          <div className="flex items-center gap-3 p-3">
+                                            <img src={newEx.img || FALLBACK_IMG} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0 border border-zinc-700" onError={imgError} />
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-sm font-bold text-white truncate">{newEx.name}</p>
+                                              <div className="flex items-center gap-2 mt-0.5">
+                                                {newEx.mus && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-md font-medium">{GRUPO_EMOJI[newEx.mus] || '•'} {newEx.mus}</span>}
+                                                <span className="text-[9px] text-zinc-500 font-medium">{newEx.s}×{newEx.r}</span>
+                                              </div>
+                                              {newEx.tip && <p className="text-[8px] text-zinc-500 mt-0.5 truncate">💡 {newEx.tip}</p>}
+                                            </div>
+                                          </div>
                                         </div>
-                                      </div>
-                                      <input type="text" placeholder="Tip / Consejo (ej: RIR 1, no bloquear codos...)" value={newEx.tip} onChange={e => setNewEx({...newEx, tip: e.target.value})} maxLength="200" className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700" />
-                                      <input type="url" placeholder="YouTube URL (opcional)" value={newEx.yt} onChange={e => setNewEx({...newEx, yt: e.target.value})} className="w-full bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700" />
-                                      <div className="flex items-center gap-2">
-                                        <input type="url" placeholder="URL imagen (opcional)" value={newEx.img} onChange={e => setNewEx({...newEx, img: e.target.value})} className="flex-1 bg-zinc-900 p-2.5 rounded-xl text-white text-xs outline-none border border-zinc-700" />
-                                        {newEx.img && <img src={newEx.img} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 border border-zinc-700" />}
-                                      </div>
+                                      )}
+
                                       <div className="flex gap-2">
-                                        <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); showSuccess("Ejercicio agregado ✓"); } }} className="flex-1 bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Añadir</button>
-                                        <button onClick={() => { if(newEx.name?.trim()) { saveCustomExercise(newEx); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); } }} className="bg-purple-500 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase active:scale-95 flex items-center gap-1" title="Añadir y guardar en tu biblioteca">+ 📚</button>
+                                        <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); showSuccess("Ejercicio agregado ✓"); } }} className="flex-1 bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 flex items-center justify-center gap-1"><Plus size={14}/> Añadir</button>
+                                        <button onClick={() => { if(newEx.name?.trim()) { saveCustomExercise(newEx); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); } }} className="bg-purple-500 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase active:scale-95 flex items-center gap-1" title="Añadir y guardar en tu biblioteca">📚 Guardar</button>
                                       </div>
                                       <p className="text-[8px] text-zinc-600 text-center">📚 = Añadir al día + guardar en tu biblioteca para reusar</p>
                                     </div>
@@ -2212,15 +2715,82 @@ export default function App() {
               </div>
             )}
 
+            {/* Streak counter + Weekly summary */}
+            {!isAdminMode && (
+                <div className="space-y-4 mt-6">
+                  {streakCount > 0 && (
+                    <div className="flex items-center gap-4 p-5 rounded-[2rem] border shadow-sm" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' }}>
+                      <div className="text-4xl">🔥</div>
+                      <div>
+                        <p className="text-2xl font-black">{streakCount} <span className="text-sm font-bold opacity-60">{streakCount === 1 ? 'día' : 'días'} seguidos</span></p>
+                        <p className="text-[10px] font-bold opacity-40 uppercase tracking-wider">¡Sigue así, máquina!</p>
+                      </div>
+                    </div>
+                  )}
+                  {(weeklySummary.daysThisWeek > 0 || weeklySummary.totalSets > 0) && (
+                    <div className="p-5 rounded-[2rem] border shadow-sm" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' }}>
+                      <div className="flex items-center gap-2 mb-4">
+                        <CalendarDays size={16} style={palette ? { color: palette.accent } : { color: '#f59e0b' }}/>
+                        <h3 className="text-[10px] font-black uppercase tracking-widest" style={palette ? { color: palette.accent } : { color: '#f59e0b' }}>Esta semana</h3>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div>
+                          <p className="text-2xl font-black">{weeklySummary.daysThisWeek}</p>
+                          <p className="text-[9px] font-bold opacity-40 uppercase">Días</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-black">{weeklySummary.totalSets}</p>
+                          <p className="text-[9px] font-bold opacity-40 uppercase">Series</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-black">{weeklySummary.totalVolume > 1000 ? `${(weeklySummary.totalVolume / 1000).toFixed(1)}k` : weeklySummary.totalVolume}</p>
+                          <p className="text-[9px] font-bold opacity-40 uppercase">Kg total</p>
+                        </div>
+                      </div>
+                      {weeklySummary.volumeChange !== 0 && (
+                        <div className={`mt-3 flex items-center justify-center gap-1 text-[10px] font-bold ${weeklySummary.volumeChange > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                          {weeklySummary.volumeChange > 0 ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+                          <span>{weeklySummary.volumeChange > 0 ? '+' : ''}{weeklySummary.volumeChange}% vs semana pasada</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 gap-6 mt-8">
               {validDays.length === 0 && !isAdminMode ? (
                 <div className="text-center py-10 opacity-40 font-bold text-sm italic">Rutina en construcción...</div>
               ) : null}
               {validDays.map(day => {
                 const DayIcon = getDayIcon(day.icon);
+                const isAdminEditing = isAdminMode && isEditingClientRoutine;
+                const isDragging = draggedDayId === day.id;
+                const isDragOver = dragOverDayId === day.id && draggedDayId !== day.id;
+                const completedToday = !isAdminMode && isDayCompletedToday(day, workoutLogs);
                 return (
-                <button key={day.id} onClick={() => (isAdminMode && isEditingClientRoutine) ? setEditingDayId(day.id) : navigateTo("day", day)} className="flex items-center justify-between p-6 rounded-[2rem] border shadow-sm active:scale-95 text-left transition-all" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
-                  <div className="flex items-center gap-4"><div className="p-4 rounded-3xl" style={palette ? { backgroundColor: `${palette.accent}15`, color: palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: '#f9fafb', color: '#6b7280' }}><DayIcon size={28}/></div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3></div></div>
+                <button key={day.id} data-day-id={day.id}
+                  onClick={() => { if (touchDragState) return; isAdminEditing ? setEditingDayId(day.id) : navigateTo("day", day); }}
+                  draggable={isAdminEditing}
+                  onDragStart={isAdminEditing ? (e) => { setDraggedDayId(day.id); e.dataTransfer.effectAllowed = 'move'; } : undefined}
+                  onDragOver={isAdminEditing ? (e) => { e.preventDefault(); setDragOverDayId(day.id); } : undefined}
+                  onDragEnd={isAdminEditing ? () => { if (draggedDayId && dragOverDayId && draggedDayId !== dragOverDayId) reorderDays(draggedDayId, dragOverDayId); setDraggedDayId(null); setDragOverDayId(null); } : undefined}
+                  onTouchStart={isAdminEditing ? (e) => handleDayTouchStart(e, day.id) : undefined}
+                  onTouchMove={isAdminEditing ? handleDayTouchMove : undefined}
+                  onTouchEnd={isAdminEditing ? handleDayTouchEnd : undefined}
+                  onTouchCancel={isAdminEditing ? () => { clearTimeout(touchTimerRef.current); setTouchDragState(null); setDraggedDayId(null); setDragOverDayId(null); } : undefined}
+                  className={`flex items-center justify-between p-6 rounded-[2rem] border shadow-sm text-left transition-all ${isDragging ? 'opacity-40 scale-95' : 'active:scale-95'} ${isDragOver ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''} ${completedToday ? 'ring-2 ring-emerald-500/40' : ''}`}
+                  style={palette ? { backgroundColor: palette.card, borderColor: completedToday ? '#10b98140' : isDragOver ? '#f59e0b' : `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: isDragOver ? '#f59e0b' : '#27272a', color: 'white' } : {}}>
+                  <div className="flex items-center gap-4">
+                    {isAdminEditing && <div className="text-zinc-600 touch-none"><GripVertical size={18}/></div>}
+                    <div className="relative p-4 rounded-3xl" style={palette ? { backgroundColor: completedToday ? '#10b98120' : `${palette.accent}15`, color: completedToday ? '#10b981' : palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: completedToday ? '#dcfce7' : '#f9fafb', color: completedToday ? '#16a34a' : '#6b7280' }}>
+                      <DayIcon size={28}/>
+                      {completedToday && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                          <CheckCircle2 size={12} className="text-white"/>
+                        </div>
+                      )}
+                    </div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3>{completedToday && <p className="text-[8px] font-bold text-emerald-500 mt-0.5">✓ Hecho hoy</p>}</div></div>
                   <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </button>
               );})}
@@ -2228,15 +2798,18 @@ export default function App() {
 
             {/* Client Settings Modal is rendered at the bottom with other modals */}
 
-            {/* NEW: Admin Motivational Phrase Manager */}
+            {/* NEW: Admin Motivational Phrase Button */}
             {isAdminMode && (
-              <AdminMotivationalManager
-                currentPhrase={dailyMotivationalPhrase}
-                allPhrases={allMotivationalPhrases}
-                onSavePhrase={saveMotivationalPhrase}
-                onDeletePhrase={deleteMotivationalPhrase}
-                colorPalette={getPaletteById(preferredPaletteId)}
-              />
+              <button onClick={() => setShowMotivationalModal(true)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 transition-all active:scale-[0.98]">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📝</span>
+                  <div className="text-left">
+                    <p className="text-[10px] font-black uppercase text-amber-500">Frase Motivadora</p>
+                    <p className="text-xs text-zinc-400 italic truncate max-w-[220px]">"{dailyMotivationalPhrase}"</p>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-zinc-600"/>
+              </button>
             )}
 
             <div className="p-6 rounded-[2rem] border shadow-sm" style={palette ? { backgroundColor: `${palette.accent}10`, borderColor: `${palette.accent}25`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : {}}>
@@ -2253,7 +2826,7 @@ export default function App() {
             {sessionStart && (
                <div className="fixed top-0 left-0 w-full bg-zinc-900 text-white p-3 z-[70] flex justify-between items-center shadow-lg">
                   <div className="flex items-center gap-2 font-black text-sm tracking-widest text-green-400"><PlayCircle size={16} className="animate-pulse" /> {String(Math.floor(sessionElapsed/60))}:{(sessionElapsed%60).toString().padStart(2,'0')}</div>
-                  <button onClick={finishSession} className="flex items-center gap-1 text-xs font-bold text-red-400 bg-white/10 px-3 py-1.5 rounded-full">FINALIZAR</button>
+                  <button onClick={() => { if (sessionElapsed > 60 && !window.confirm('¿Finalizar sesión?')) return; finishSession(); }} className="flex items-center gap-1 text-xs font-bold text-red-400 bg-white/10 px-3 py-1.5 rounded-full">FINALIZAR</button>
                </div>
             )}
             <div className="flex justify-between items-center mt-12">
@@ -2269,10 +2842,19 @@ export default function App() {
                 </div>
               </div>
             )}
+            {/* Quick exercise search */}
+            {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; const allExercises = Array.isArray(liveDay.exercises) ? liveDay.exercises : []; return allExercises.length > 3 ? (
+              <div className="relative">
+                <Search size={16} className={`absolute left-4 top-1/2 -translate-y-1/2 ${palette ? '' : isAdminMode ? 'text-zinc-500' : 'text-gray-400'}`} style={palette ? { color: `${palette.text}50` } : {}}/>
+                <input type="text" placeholder="Buscar ejercicio..." value={daySearchQuery} onChange={e => setDaySearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 rounded-2xl border text-sm font-medium outline-none" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : { backgroundColor: '#f9fafb', borderColor: '#f3f4f6', color: '#111827' }} />
+              </div>
+            ) : null; })()}
             <div className="space-y-4">
-              {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; return (Array.isArray(liveDay.exercises) ? liveDay.exercises : []).map((ex, i) => (
-                <ExerciseCard key={`${liveDay.id}-${i}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={(dayId, exName) => { setImageManagerTarget({ dayId, exName }); setImageManagerOpen(true); }} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} />
-              )); })()}
+              {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; const allExercises = Array.isArray(liveDay.exercises) ? liveDay.exercises : []; const filtered = daySearchQuery.trim() ? allExercises.filter(ex => (ex.name || '').toLowerCase().includes(daySearchQuery.toLowerCase()) || (ex.mus || '').toLowerCase().includes(daySearchQuery.toLowerCase())) : allExercises; return filtered.map((ex, i) => {
+                const originalIdx = allExercises.indexOf(ex);
+                return (
+                <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} />
+              ); }); })()}
             </div>
           </div>
         )}
@@ -2292,7 +2874,7 @@ export default function App() {
                if(l.length < 1) return null;
                const displayVal = chartMode === 'volume' ? (parseFloat(l[0]?.weight) || 0) * (parseInt(l[0]?.reps) || 10) * (parseInt(ex.s) || 3) : Math.max(...l.map(x=>parseFloat(x.weight) || 0));
                return (
-                 <div key={`${d.id}-${i}`} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-100 text-gray-900"} p-6 rounded-[2rem] shadow-sm border`}>
+                 <div key={`${d.id}-${i}`} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-100 text-gray-900"} p-6 rounded-[2rem] shadow-sm border cursor-pointer active:scale-[0.98] transition-transform`} onClick={() => setExpandedStatsExercise({ name: ex.name, logs: l, sets: ex.s })}>
                     <div className="flex justify-between items-start mb-2"><div><span className="text-[8px] text-zinc-400 uppercase font-black">{String(d.title || "").split(":")[0]}</span><h4 className="text-lg font-black leading-tight">{String(ex.name || "")}</h4></div><div className="text-amber-500 font-black text-sm">{displayVal}kg</div></div>
                     <MiniProgressChart data={l} color={client.color} isAdmin={isAdminMode} mode={chartMode} exSets={ex.s} />
                     {l.length > 1 && (
@@ -2303,6 +2885,7 @@ export default function App() {
                         color={palette?.accent || (isAdminMode ? "#f59e0b" : "#3b82f6")}
                       />
                     )}
+                    <p className="text-[8px] text-zinc-500 text-center mt-2 font-medium">Toca para ver gráfico completo</p>
                  </div>
                );
             }))}
@@ -2350,11 +2933,11 @@ export default function App() {
       </div>
 
       <nav className="fixed bottom-14 left-1/2 -translate-x-1/2 backdrop-blur-md border px-6 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-6 z-50" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}20` } : isAdminMode ? { backgroundColor: '#18181bee', borderColor: '#27272a' } : { backgroundColor: '#ffffffee', borderColor: '#f3f4f6' }}>
-        <button onClick={() => navigateTo("home")} className="transition-all" style={activeTab === "home" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={22} /></button>
-        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className="transition-all" style={activeTab === "day" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={22} /></button>
-        <button onClick={() => navigateTo("stats")} className="transition-all" style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={22} /></button>
-        <button onClick={() => navigateTo("progress")} className="transition-all" style={activeTab === "progress" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Scale size={22} /></button>
-        <button onClick={() => navigateTo("journal")} className="transition-all" style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={22} /></button>
+        <button onClick={() => navigateTo("home")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "home" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={22} /><span className="text-[8px] font-bold leading-none">Home</span></button>
+        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "day" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={22} /><span className="text-[8px] font-bold leading-none">Rutina</span></button>
+        <button onClick={() => navigateTo("stats")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={22} /><span className="text-[8px] font-bold leading-none">Stats</span></button>
+        <button onClick={() => navigateTo("progress")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "progress" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Scale size={22} /><span className="text-[8px] font-bold leading-none">Cuerpo</span></button>
+        <button onClick={() => navigateTo("journal")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={22} /><span className="text-[8px] font-bold leading-none">Diario</span></button>
       </nav>
 
       {/* --- MODALES --- */}
@@ -2460,6 +3043,25 @@ export default function App() {
         </div>
       )}
 
+      {/* Modal: Frases Motivadoras (Admin) */}
+      {showMotivationalModal && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-t-[2rem] sm:rounded-[2rem] p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-amber-500 font-black uppercase text-sm flex items-center gap-2">📝 Frases Motivadoras</h3>
+              <button onClick={() => setShowMotivationalModal(false)}><X size={20} className="text-zinc-500"/></button>
+            </div>
+            <AdminMotivationalManager
+              currentPhrase={dailyMotivationalPhrase}
+              allPhrases={allMotivationalPhrases}
+              onSavePhrase={(data) => { saveMotivationalPhrase(data); }}
+              onDeletePhrase={deleteMotivationalPhrase}
+              colorPalette={getPaletteById(preferredPaletteId)}
+            />
+          </div>
+        </div>
+      )}
+
       {showAddClientModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-6 space-y-4 shadow-2xl">
@@ -2467,13 +3069,11 @@ export default function App() {
               <input type="text" placeholder="Usuario" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.username} onChange={e=>setNewClient({...newClient, username:e.target.value})} />
               <input type="password" placeholder="Contraseña" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
               <input type="text" placeholder="Nombre completo" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
-              <button onClick={runCreateProfile} className="w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase">CREAR CUENTA</button>
+              <button onClick={runCreateProfile} disabled={isCreatingProfile} className={`w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 ${isCreatingProfile ? 'opacity-60' : ''}`}>{isCreatingProfile ? <><Loader2 className="animate-spin" size={14}/> CREANDO...</> : 'CREAR CUENTA'}</button>
               <button onClick={()=>setShowAddClientModal(false)} className="w-full text-zinc-500 text-[10px] font-bold">CANCELAR</button>
            </div>
         </div>
       )}
-
-      {toast && (<div className="fixed top-12 left-1/2 -translate-x-1/2 z-[150] w-10/12 max-w-sm animate-in slide-in-from-top-10"><div className={`${toast.type === 'ERROR' ? 'bg-red-600' : toast.type === 'WARNING' ? 'bg-orange-500' : toast.type === 'INFO' ? 'bg-blue-600' : 'bg-green-600'} text-white p-4 rounded-2xl flex items-center gap-3 shadow-2xl border-2 border-white/20`}><CheckCircle2 size={24}/> <span className="text-xs font-black uppercase tracking-widest">{String(toast.message)}</span></div></div>)}
 
       {/* Admin: Client Info & Password Reset Modal */}
       {showClientInfoModal && clientInfoTarget && db[clientInfoTarget] && (
@@ -2524,12 +3124,63 @@ export default function App() {
       {/* Exercise Image Manager Modal (Admin) */}
       <ExerciseImageManager
         isOpen={imageManagerOpen}
-        onClose={() => setImageManagerOpen(false)}
+        onClose={() => { setImageManagerOpen(false); setNewExImageMode(false); }}
         exerciseName={imageManagerTarget.exName}
         onSelectImage={(imgData) => {
-          updateImageHook(imageManagerTarget.dayId, imageManagerTarget.exName, imgData);
+          if (newExImageMode) {
+            setNewEx(prev => ({...prev, img: imgData}));
+            setNewExImageMode(false);
+          } else {
+            updateImageHook(imageManagerTarget.dayId, imageManagerTarget.exName, imgData);
+          }
         }}
       />
+
+      {/* Confetti celebration effect */}
+      <ConfettiEffect active={showConfetti} onDone={() => setShowConfetti(false)} />
+
+      {/* Expanded stats chart modal */}
+      {expandedStatsExercise && (
+        <ExpandedChart
+          logs={expandedStatsExercise.logs}
+          exName={expandedStatsExercise.name}
+          exSets={expandedStatsExercise.sets}
+          mode={chartMode}
+          color={client.color}
+          isAdmin={isAdminMode}
+          onClose={() => setExpandedStatsExercise(null)}
+        />
+      )}
+
+      {/* Onboarding welcome modal for new clients */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-500">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-8 space-y-5 shadow-2xl text-center animate-in slide-in-from-bottom-10 duration-500">
+            <div className="text-5xl mb-2">🏋️</div>
+            <h2 className="text-white font-black text-xl">¡Bienvenido a Athlos!</h2>
+            <p className="text-zinc-400 text-sm leading-relaxed">Tu entrenador ha preparado tu rutina personalizada. Aquí podrás:</p>
+            <div className="space-y-3 text-left">
+              <div className="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-xl">
+                <span className="text-lg">📋</span>
+                <p className="text-xs text-zinc-300"><b className="text-white">Ver tus días</b> — Toca un día para ver los ejercicios</p>
+              </div>
+              <div className="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-xl">
+                <span className="text-lg">💪</span>
+                <p className="text-xs text-zinc-300"><b className="text-white">Registrar series</b> — Apunta peso y reps de cada serie</p>
+              </div>
+              <div className="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-xl">
+                <span className="text-lg">📈</span>
+                <p className="text-xs text-zinc-300"><b className="text-white">Ver tu progreso</b> — En la pestaña Evolución verás tus gráficos</p>
+              </div>
+              <div className="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-xl">
+                <span className="text-lg">⏱️</span>
+                <p className="text-xs text-zinc-300"><b className="text-white">Cronómetro</b> — Inicia el crono al empezar a entrenar</p>
+              </div>
+            </div>
+            <button onClick={() => { setShowOnboarding(false); localStorage.setItem(`athlos_onboarding_${loggedInUser}`, 'true'); }} className="w-full bg-amber-500 text-black font-black py-4 rounded-xl text-sm uppercase active:scale-95 transition-transform shadow-lg shadow-amber-500/20">¡Vamos! 💪</button>
+          </div>
+        </div>
+      )}
 
       {/* NEW: Toast notification container */}
       <div className="fixed bottom-32 right-4 z-40 space-y-2">

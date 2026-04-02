@@ -7,7 +7,7 @@
   },
   "android": {
     "backgroundColor": "#09090b",
-    "allowMixedContent": true,
+    "allowMixedContent": false,
     "overScrollMode": "never"
   },
   "ios": {

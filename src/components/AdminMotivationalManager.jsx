@@ -18,7 +18,6 @@ export const AdminMotivationalManager = ({
   onDeletePhrase = () => {},
   colorPalette = null,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [newPhrase, setNewPhrase] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
@@ -60,38 +59,7 @@ export const AdminMotivationalManager = ({
   };
 
   return (
-    <div 
-      className="rounded-xl overflow-hidden border-l-4 shadow-lg"
-      style={{ 
-        backgroundColor: colors.secondary,
-        borderLeftColor: colors.accent,
-      }}
-    >
-      {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-4 flex items-center justify-between hover:opacity-80 transition-opacity"
-        style={{ backgroundColor: colors.secondary }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="text-2xl">📝</div>
-          <div className="text-left">
-            <h3 className="font-bold" style={{ color: colors.accent }}>
-              Panel Admin: Frases Motivadoras
-            </h3>
-            <p className="text-xs opacity-70" style={{ color: colors.text }}>
-              Gestiona las frases diarias para tus clientes
-            </p>
-          </div>
-        </div>
-        <div style={{ color: colors.accent }}>
-          {isExpanded ? '▼' : '▶'}
-        </div>
-      </button>
-
-      {/* Content */}
-      {isExpanded && (
-        <div className="p-4 space-y-4 border-t" style={{ borderTopColor: `${colors.accent}33` }}>
+    <div className="space-y-4">
           
           {/* Current Phrase Display */}
           {currentPhrase && (
@@ -239,10 +207,8 @@ export const AdminMotivationalManager = ({
               color: colors.accent,
             }}
           >
-            💡 Las frases se actualizan en tiempo real para todos tus clientes. Usa un lenguaje motivador y positivo.
+            💡 Las frases se actualizan en tiempo real para todos tus clientes.
           </div>
-        </div>
-      )}
     </div>
   );
 };

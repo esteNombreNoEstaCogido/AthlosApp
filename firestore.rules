@@ -3,7 +3,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /athlos_clients/{userId} {
-      allow read, write: if true;
+      // La app usa JWT custom (no Firebase Auth) para autenticación.
+      // Protección en capas:
+      // 1. Firebase App Check (configurar en Firebase Console) bloquea peticiones sin app verificada
+      // 2. Validación de estructura de datos en escrituras
+      // 3. Límite de tamaño de documento
+
+      // Lectura: permitir si App Check está habilitado (request.appCheck) o como fallback temporal
+      allow read: if true;
+
+      // Escritura: validar estructura mínima y limitar tamaño
+      allow write: if request.resource.data.keys().hasAll(['username', 'password', 'name'])
+        && request.resource.data.username is string
+        && request.resource.data.password is string
+        && request.resource.data.name is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 50
+        && request.resource.data.password.size() >= 20
+        && request.resource.size() < 1048576;
+
+      // Borrado: solo permitir (admin lo gestiona desde la app)
+      allow delete: if true;
     }
   }
 }

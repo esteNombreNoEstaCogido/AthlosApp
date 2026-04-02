@@ -64,7 +64,7 @@ export const sanitizeUrl = (url) => {
     trimmed.startsWith('/');
   
   if (!isSafeUrl) {
-    console.warn(`⚠️ Blocked unsafe URL: ${trimmed.substring(0, 30)}...`);
+    if (import.meta.env.DEV) console.warn(`Blocked unsafe URL: ${trimmed.substring(0, 30)}...`);
     return '';
   }
   
@@ -74,14 +74,14 @@ export const sanitizeUrl = (url) => {
       new URL(trimmed);
       return trimmed;
     } catch (e) {
-      console.warn(`⚠️ Invalid URL format: ${trimmed}`);
+      if (import.meta.env.DEV) console.warn(`Invalid URL format: ${trimmed}`);
       return '';
     }
   }
   
   // Relative paths: just ensure no backslashes or double slashes
   if (trimmed.includes('\\') || trimmed.includes('//')) {
-    console.warn(`⚠️ Blocked suspicious relative path: ${trimmed}`);
+    if (import.meta.env.DEV) console.warn(`Blocked suspicious relative path: ${trimmed}`);
     return '';
   }
   
@@ -132,7 +132,7 @@ export const sanitizeMultilineText = (str, maxLen = 1000) => {
   // Remove excessive newlines (max 10)
   const lines = escaped.split('\n');
   if (lines.length > 10) {
-    console.warn(`⚠️ Removed excessive newlines (${lines.length} > 10)`);
+    if (import.meta.env.DEV) console.warn(`Removed excessive newlines (${lines.length} > 10)`);
     return lines.slice(0, 10).join('\n');
   }
   
@@ -154,7 +154,7 @@ export const sanitizeColor = (str) => {
   const isValid = /^from-[a-z]+-\d+ to-[a-z]+-\d+$/.test(trimmed);
   
   if (!isValid) {
-    console.warn(`⚠️ Invalid color format: ${trimmed}`);
+    if (import.meta.env.DEV) console.warn(`Invalid color format: ${trimmed}`);
     return 'from-blue-600 to-indigo-500'; // Safe default
   }
   
@@ -174,7 +174,7 @@ export const safeJSONParse = (key, fallback = null) => {
       return JSON.parse(item);
     }
   } catch (e) {
-    console.warn(`⚠️ JSON parse error for key "${key}":`, e.message);
+    if (import.meta.env.DEV) console.warn(`JSON parse error for key "${key}":`, e.message);
   }
   return fallback;
 };
@@ -189,7 +189,7 @@ export const safeJSONStringify = (value, fallback = '{}') => {
   try {
     return JSON.stringify(value);
   } catch (e) {
-    console.warn(`⚠️ JSON stringify error:`, e.message);
+    if (import.meta.env.DEV) console.warn(`JSON stringify error:`, e.message);
     return fallback;
   }
 };

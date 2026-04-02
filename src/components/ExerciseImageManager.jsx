@@ -28,9 +28,14 @@ const LOCAL_EXERCISE_IMAGES = [
   ]},
 ];
 
-// Compress image to reduce Firestore document size
-function compressImage(dataUrl, maxWidth = 600, quality = 0.7) {
-  return new Promise((resolve) => {
+// Compress image to reduce Firestore document size (max 50KB output)
+function compressImage(dataUrl, maxWidth = 400, quality = 0.6) {
+  return new Promise((resolve, reject) => {
+    // Reject if input is absurdly large (>10MB base64)
+    if (dataUrl.length > 10 * 1024 * 1024 * 1.37) {
+      reject(new Error('Imagen demasiado grande (máx. 10MB)'));
+      return;
+    }
     const img = new window.Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -39,9 +44,14 @@ function compressImage(dataUrl, maxWidth = 600, quality = 0.7) {
       canvas.height = img.height * ratio;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      let result = canvas.toDataURL('image/jpeg', quality);
+      // Re-compress if still too large (>30KB base64 ~ 22KB binary)
+      if (result.length > 40000 && quality > 0.3) {
+        result = canvas.toDataURL('image/jpeg', 0.35);
+      }
+      resolve(result);
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => reject(new Error('Imagen no válida'));
     img.src = dataUrl;
   });
 }
@@ -78,7 +88,7 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
     }
   };
 
-  const handleCameraCapture = async () => {
+  const handleNativeCapture = async (captureSource) => {
     if (!Capacitor.isNativePlatform()) {
       fileRef.current?.click();
       return;
@@ -91,9 +101,13 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
         quality: 80,
         allowEditing: false,
         resultType: 'dataUrl',
-        source: 'PROMPT',
+        source: captureSource,
         width: 600,
         height: 600,
+        promptLabelHeader: 'Seleccionar imagen',
+        promptLabelPhoto: 'Desde galería',
+        promptLabelPicture: 'Hacer foto',
+        promptLabelCancel: 'Cancelar',
       });
       if (photo.dataUrl) {
         const compressed = await compressImage(photo.dataUrl);
@@ -112,11 +126,17 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
   const handleUrlSubmit = async () => {
     const trimmed = urlInput.trim();
     if (!trimmed) return;
-    // Basic URL validation
+    // URL validation + block private/internal networks
     try {
       const parsed = new URL(trimmed);
       if (!['http:', 'https:'].includes(parsed.protocol)) {
         setError('Solo URLs http/https');
+        return;
+      }
+      const hostname = parsed.hostname.toLowerCase();
+      const blockedPrefixes = ['localhost', '127.', '192.168.', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.', '169.254.', '0.0.0.0', 'metadata.google'];
+      if (blockedPrefixes.some(p => hostname.startsWith(p)) || hostname === '[::1]') {
+        setError('URL no permitida');
         return;
       }
     } catch {
@@ -156,7 +176,7 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
   };
 
   const sources = [
-    { id: 'gallery', label: 'Galería', icon: Camera },
+    { id: 'gallery', label: 'Foto', icon: Camera },
     { id: 'url', label: 'URL', icon: Link },
     { id: 'library', label: 'Biblioteca', icon: FolderOpen },
   ];
@@ -196,20 +216,51 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
 
         {/* Gallery/Camera Source */}
         {activeSource === 'gallery' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <input type="file" ref={fileRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
-            <button
-              onClick={handleCameraCapture}
-              disabled={isLoading}
-              className="w-full p-6 rounded-2xl border-2 border-dashed border-amber-500/30 bg-amber-500/5 flex flex-col items-center gap-3 transition-all active:scale-95"
-            >
-              {isLoading ? <Loader2 size={32} className="text-amber-500 animate-spin"/>
-                : <Camera size={32} className="text-amber-500"/>}
-              <span className="text-amber-500 font-bold text-xs">
-                {Capacitor.isNativePlatform() ? 'Cámara o Galería' : 'Seleccionar Archivo'}
-              </span>
-              <span className="text-zinc-500 text-[9px]">JPG, PNG • Máx 600px</span>
-            </button>
+            {isLoading ? (
+              <div className="w-full p-8 rounded-2xl border border-zinc-800 bg-zinc-800/50 flex flex-col items-center gap-3">
+                <Loader2 size={32} className="text-amber-500 animate-spin"/>
+                <span className="text-zinc-400 text-xs font-bold">Procesando imagen...</span>
+              </div>
+            ) : Capacitor.isNativePlatform() ? (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleNativeCapture('CAMERA')}
+                  className="p-5 rounded-2xl border border-zinc-800 bg-zinc-800/50 hover:bg-zinc-800 flex flex-col items-center gap-3 transition-all active:scale-95"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center">
+                    <Camera size={28} className="text-amber-500"/>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-white font-bold text-xs block">Cámara</span>
+                    <span className="text-zinc-500 text-[9px]">Hacer foto</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleNativeCapture('PHOTOS')}
+                  className="p-5 rounded-2xl border border-zinc-800 bg-zinc-800/50 hover:bg-zinc-800 flex flex-col items-center gap-3 transition-all active:scale-95"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                    <FolderOpen size={28} className="text-blue-400"/>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-white font-bold text-xs block">Galería</span>
+                    <span className="text-zinc-500 text-[9px]">Elegir foto</span>
+                  </div>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full p-6 rounded-2xl border-2 border-dashed border-amber-500/30 bg-amber-500/5 flex flex-col items-center gap-3 transition-all active:scale-95"
+              >
+                <Camera size={32} className="text-amber-500"/>
+                <span className="text-amber-500 font-bold text-xs">Seleccionar Archivo</span>
+                <span className="text-zinc-500 text-[9px]">JPG, PNG • Máx 600px</span>
+              </button>
+            )}
+            <p className="text-zinc-600 text-[9px] text-center">La imagen se comprimirá automáticamente</p>
           </div>
         )}
 

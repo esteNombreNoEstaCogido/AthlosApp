@@ -88,7 +88,7 @@ const WorkoutLogSchema = {
     },
     date: {
       type: 'string',
-      pattern: '^[0-9]{1,2}/[0-9]{1,2}$', // DD/MM format
+      pattern: '^[0-9]{1,2}/[0-9]{1,2}(/[0-9]{2,4})?$', // DD/MM or DD/MM/YY format
     },
     id: {
       type: 'number',
@@ -170,7 +170,7 @@ const NoteSchema = {
     },
     date: {
       type: 'string',
-      pattern: '^[0-9]{1,2}/[0-9]{1,2}$',
+      pattern: '^[0-9]{1,2}/[0-9]{1,2}(/[0-9]{2,4})?$',
     },
     id: {
       type: 'number',
