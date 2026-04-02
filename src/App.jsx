@@ -1666,7 +1666,7 @@ export default function App() {
         sessionStorage.removeItem("athlos_session_final");
         sessionStorage.removeItem("athlos_session_start");
         setDataLoaded(false);
-        showToast('Sesión cerrada por inactividad', 'info');
+        showError('Sesión cerrada por inactividad');
       }, INACTIVITY_TIMEOUT_MS);
     };
     const events = ['click', 'keydown', 'scroll', 'touchstart', 'mousemove'];
@@ -2182,6 +2182,12 @@ export default function App() {
     } else { setTargetDayId(""); }
   }, [currentClientId, db, targetDayId]);
 
+  // Hooks must be called unconditionally (before any early returns)
+  const client = db[currentClientId] || {};
+  const workoutLogs = client.logs || {};
+  const streakCount = useMemo(() => calculateStreak(workoutLogs), [workoutLogs]);
+  const weeklySummary = useMemo(() => getWeeklySummary(workoutLogs), [workoutLogs]);
+
   // --- UI RENDER ---
 
   if (!loggedInUser) {
@@ -2220,10 +2226,6 @@ export default function App() {
     </div>
   );
 
-  const client = db[currentClientId];
-  const workoutLogs = client.logs || {};
-  const streakCount = useMemo(() => calculateStreak(workoutLogs), [workoutLogs]);
-  const weeklySummary = useMemo(() => getWeeklySummary(workoutLogs), [workoutLogs]);
   const dailyNotes = client.notes || [];
   const validDays = Array.isArray(client.workoutData?.days) ? client.workoutData.days : [];
   const validNotes = Array.isArray(client.notes) ? client.notes : [];
