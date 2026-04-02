@@ -77,6 +77,13 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+const APP_VERSION = "2.4.4";
+const COLLECTION_NAME = "athlos_clients";
+const __DEV__ = import.meta.env.MODE === 'development';
+const log = (...args) => { if (__DEV__) console.log(...args); };
+const warn = (...args) => { if (__DEV__) console.warn(...args); };
+const err = (...args) => { console.error(...args); };
+
 let app, db_cloud;
 try {
   app = initializeApp(firebaseConfig);
@@ -102,12 +109,6 @@ try {
 if (!db_cloud) {
   err("⛔ Firestore not initialized — app will run in offline-only mode");
 }
-const APP_VERSION = "2.4.4";
-const COLLECTION_NAME = "athlos_clients";
-const __DEV__ = import.meta.env.MODE === 'development';
-const log = (...args) => { if (__DEV__) console.log(...args); };
-const warn = (...args) => { if (__DEV__) console.warn(...args); };
-const err = (...args) => { console.error(...args); };
 
 // Constantes de configuración
 const LOGIN_MAX_ATTEMPTS = 5;
