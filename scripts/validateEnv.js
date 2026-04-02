@@ -18,33 +18,30 @@ const envFile = path.resolve(__dirname, '../.env');
 
 console.log('🔐 Validating environment variables...');
 
-// Check if .env exists
-if (!fs.existsSync(envFile)) {
-  console.error('❌ Error: .env file not found');
-  console.error(`   Please create .env based on .env.example`);
-  process.exit(1);
-}
-
-// Load .env
-const envContent = fs.readFileSync(envFile, 'utf-8');
+// Load from .env file if it exists, otherwise rely on process.env (Vercel, CI, etc.)
 const envVars = {};
 
-envContent.split('\n').forEach(line => {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith('#')) return;
-  
-  const [key, ...rest] = trimmed.split('=');
-  const value = rest.join('=').trim().replace(/^["']|["']$/g, '');
-  
-  if (key && value) {
-    envVars[key] = value;
-  }
-});
+if (fs.existsSync(envFile)) {
+  const envContent = fs.readFileSync(envFile, 'utf-8');
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    
+    const [key, ...rest] = trimmed.split('=');
+    const value = rest.join('=').trim().replace(/^["']|["']$/g, '');
+    
+    if (key && value) {
+      envVars[key] = value;
+    }
+  });
+} else {
+  console.log('ℹ️  No .env file found, checking process.env (CI/Vercel mode)');
+}
 
-// Validate required vars
+// Validate required vars (check .env first, then process.env as fallback)
 let missing = [];
 REQUIRED_VARS.forEach(varName => {
-  const value = envVars[varName];
+  const value = envVars[varName] || process.env[varName];
   
   if (!value || value.includes('your_') || value === '') {
     missing.push(varName);
