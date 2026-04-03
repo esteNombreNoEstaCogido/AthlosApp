@@ -849,7 +849,7 @@ const ExpandedChart = ({ logs, exName, exSets, mode, color, isAdmin, onClose }) 
   );
 };
 
-const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, accentColor, onAddExerciseNote, exerciseNotes }) => {
+const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, accentColor, onAddExerciseNote, exerciseNotes, palette }) => {
   const [localW, setLocalW] = useState("");
   const [localR, setLocalR] = useState("");
   const [showCalc, setShowCalc] = useState(false);
@@ -860,6 +860,16 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
   const safeColor = String(accentColor || "from-blue-600 to-indigo-500");
   const bgAccent = isAdmin ? "bg-amber-500" : safeColor.includes("blue") ? "bg-blue-500" : safeColor.includes("emerald") ? "bg-emerald-500" : "bg-pink-500";
   const textAccent = isAdmin ? "text-amber-500" : safeColor.includes("blue") ? "text-blue-600" : safeColor.includes("emerald") ? "text-emerald-600" : "text-pink-600";
+
+  // Palette-aware styles for client mode
+  const p = !isAdmin && palette ? palette : null;
+  const cardBg = p ? p.card : undefined;
+  const cardBorder = p ? `${p.accent}25` : undefined;
+  const accentHex = p ? p.accent : undefined;
+  const textHex = p ? p.text : undefined;
+  const secondaryBg = p ? p.secondary : undefined;
+  const subtextHex = p ? `${p.text}99` : undefined;
+  const dimTextHex = p ? `${p.text}60` : undefined;
 
   const safeName = String(ex?.name || "");
   const safeMus = String(ex?.mus || "Fuerza");
@@ -893,7 +903,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
   };
 
   return (
-    <div className={`${isAdmin ? "bg-zinc-900 border-zinc-800" : "bg-white border-gray-100"} rounded-[2.5rem] border shadow-sm overflow-hidden mb-6`}>
+    <div className={`${isAdmin ? "bg-zinc-900 border-zinc-800" : p ? "" : "bg-white border-gray-100"} rounded-[2.5rem] border shadow-sm overflow-hidden mb-6`} style={p ? { backgroundColor: cardBg, borderColor: cardBorder } : undefined}>
       <div className="relative h-52 bg-zinc-800 group">
         <img src={ex?.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
@@ -905,7 +915,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
            }}/></button>}
         <div className="absolute bottom-4 left-6 text-white">
           <div className="flex items-center gap-2 mb-1">
-             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${bgAccent} ${isAdmin ? "text-black" : "text-white"} inline-block`}>{safeMus}</span>
+             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isAdmin ? bgAccent + " text-black" : p ? "" : bgAccent + " text-white"} inline-block`} style={p ? { backgroundColor: accentHex, color: p.dark } : undefined}>{safeMus}</span>
              {maxW > 0 && <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-bold"><Trophy size={10} className="inline mb-0.5 text-amber-400"/> {maxW}kg</span>}
           </div>
           <h4 className="text-xl font-black pr-10 leading-tight">{safeName}</h4>
@@ -914,49 +924,49 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
       </div>
       <div className="p-6">
         <div className="grid grid-cols-2 gap-3 mb-8 text-center">
-          <div className={`${isAdmin ? 'bg-zinc-800' : 'bg-gray-50'} p-3 rounded-2xl`}><p className={`text-[9px] font-bold uppercase ${isAdmin ? 'text-zinc-400' : 'text-gray-400'}`}>Series</p><p className={`text-xl font-black ${textAccent}`}>{safeS}</p></div>
-          <div className={`${isAdmin ? 'bg-zinc-800' : 'bg-gray-50'} p-3 rounded-2xl`}><p className={`text-[9px] font-bold uppercase ${isAdmin ? 'text-zinc-400' : 'text-gray-400'}`}>Reps</p><p className={`text-xl font-black ${textAccent}`}>{safeR}</p></div>
+          <div className={`${isAdmin ? 'bg-zinc-800' : p ? '' : 'bg-gray-50'} p-3 rounded-2xl`} style={p ? { backgroundColor: secondaryBg } : undefined}><p className={`text-[9px] font-bold uppercase ${isAdmin ? 'text-zinc-400' : p ? '' : 'text-gray-400'}`} style={p ? { color: subtextHex } : undefined}>Series</p><p className={`text-xl font-black ${isAdmin ? textAccent : p ? '' : textAccent}`} style={p ? { color: accentHex } : undefined}>{safeS}</p></div>
+          <div className={`${isAdmin ? 'bg-zinc-800' : p ? '' : 'bg-gray-50'} p-3 rounded-2xl`} style={p ? { backgroundColor: secondaryBg } : undefined}><p className={`text-[9px] font-bold uppercase ${isAdmin ? 'text-zinc-400' : p ? '' : 'text-gray-400'}`} style={p ? { color: subtextHex } : undefined}>Reps</p><p className={`text-xl font-black ${isAdmin ? textAccent : p ? '' : textAccent}`} style={p ? { color: accentHex } : undefined}>{safeR}</p></div>
         </div>
         <div className="space-y-4">
           <div className="flex justify-between items-center mb-2">
-            <h5 className={`text-[10px] font-black uppercase tracking-widest ${isAdmin ? 'text-zinc-500' : 'text-gray-400'} flex items-center gap-2`}><History size={14} /> Historial</h5>
+            <h5 className={`text-[10px] font-black uppercase tracking-widest ${isAdmin ? 'text-zinc-500' : p ? '' : 'text-gray-400'} flex items-center gap-2`} style={p ? { color: dimTextHex } : undefined}><History size={14} /> Historial</h5>
             <div className="flex gap-2">
-               <button onClick={() => onStartTimer(45)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-orange-50 text-orange-600 border-orange-100"}`}>45s</button>
-               <button onClick={() => onStartTimer(60)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500 text-black border-amber-600" : "bg-orange-100 text-orange-700 border-orange-200"}`}>60s</button>
+               <button onClick={() => onStartTimer(45)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : p ? "" : "bg-orange-50 text-orange-600 border-orange-100"}`} style={p ? { backgroundColor: `${accentHex}15`, color: accentHex, borderColor: `${accentHex}30` } : undefined}>45s</button>
+               <button onClick={() => onStartTimer(60)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500 text-black border-amber-600" : p ? "" : "bg-orange-100 text-orange-700 border-orange-200"}`} style={p ? { backgroundColor: accentHex, color: p.dark, borderColor: accentHex } : undefined}>60s</button>
             </div>
           </div>
           {suggestedWeight > 0 && (
-            <div className={`flex items-center gap-2 text-[10px] font-bold p-2 rounded-xl border ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-indigo-50 text-indigo-600 border-indigo-100"}`}>
+            <div className={`flex items-center gap-2 text-[10px] font-bold p-2 rounded-xl border ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : p ? "" : "bg-indigo-50 text-indigo-600 border-indigo-100"}`} style={p ? { backgroundColor: `${accentHex}15`, color: accentHex, borderColor: `${accentHex}30` } : undefined}>
               <Brain size={14} className="shrink-0" />
               <span>Sugerencia: <strong>{suggestedWeight}kg</strong> (RM x {targetRepsCalc})</span>
             </div>
           )}
           <div className="flex flex-col gap-2">
             {logs.slice(0, 3).map(l => (
-              <div key={String(l.id)} className={`flex justify-between items-center p-2 rounded-xl border animate-in zoom-in ${isAdmin ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-100'}`}>
-                <span className={`text-xs font-bold ${textAccent}`}>{String(l.weight)}kg x {String(l.reps)}</span>
-                <div className="flex items-center gap-3"><span className={`text-[9px] ${isAdmin ? 'text-zinc-500' : 'text-zinc-400'}`}>{String(l.date)}</span><button onClick={() => { if(window.confirm('¿Borrar esta serie?')) onDeleteLog(safeName, l.id); }} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
+              <div key={String(l.id)} className={`flex justify-between items-center p-2 rounded-xl border animate-in zoom-in ${isAdmin ? 'bg-zinc-800/50 border-zinc-700' : p ? '' : 'bg-zinc-50 border-zinc-100'}`} style={p ? { backgroundColor: secondaryBg, borderColor: `${accentHex}20` } : undefined}>
+                <span className={`text-xs font-bold ${isAdmin ? textAccent : p ? '' : textAccent}`} style={p ? { color: accentHex } : undefined}>{String(l.weight)}kg x {String(l.reps)}</span>
+                <div className="flex items-center gap-3"><span className={`text-[9px] ${isAdmin ? 'text-zinc-500' : p ? '' : 'text-zinc-400'}`} style={p ? { color: dimTextHex } : undefined}>{String(l.date)}</span><button onClick={() => { if(window.confirm('¿Borrar esta serie?')) onDeleteLog(safeName, l.id); }} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
               </div>
             ))}
           </div>
 
           {/* NOTAS DE LA MÁQUINA */}
           <div className="pt-4">
-            <button onClick={() => setShowNotes(!showNotes)} className={`w-full flex items-center justify-between p-3 rounded-xl border text-[10px] font-black uppercase transition-all ${showNotes ? (isAdmin ? "bg-amber-500/20 border-amber-500/30 text-amber-500" : "bg-blue-50 border-blue-200 text-blue-600") : (isAdmin ? "bg-zinc-800/50 border-zinc-700 text-zinc-400" : "bg-gray-50 border-gray-100 text-gray-400")}`}>
+            <button onClick={() => setShowNotes(!showNotes)} className={`w-full flex items-center justify-between p-3 rounded-xl border text-[10px] font-black uppercase transition-all ${showNotes ? (isAdmin ? "bg-amber-500/20 border-amber-500/30 text-amber-500" : p ? "" : "bg-blue-50 border-blue-200 text-blue-600") : (isAdmin ? "bg-zinc-800/50 border-zinc-700 text-zinc-400" : p ? "" : "bg-gray-50 border-gray-100 text-gray-400")}`} style={p ? (showNotes ? { backgroundColor: `${accentHex}20`, borderColor: `${accentHex}30`, color: accentHex } : { backgroundColor: secondaryBg, borderColor: `${textHex}15`, color: subtextHex }) : undefined}>
               <div className="flex items-center gap-2"><MessageSquareHeart size={14}/> Notas Máquina</div>
               {(Array.isArray(exerciseNotes) ? exerciseNotes : []).length > 0 && <span className="bg-amber-500 text-black px-2 py-0.5 rounded-full text-[8px] font-bold">{(Array.isArray(exerciseNotes) ? exerciseNotes : []).length}</span>}
             </button>
             {showNotes && (
-              <div className={`mt-2 p-4 rounded-xl border space-y-4 animate-in slide-in-from-top-4 ${isAdmin ? "bg-zinc-800/50 border-zinc-700" : "bg-gray-50 border-gray-100"}`}>
+              <div className={`mt-2 p-4 rounded-xl border space-y-4 animate-in slide-in-from-top-4 ${isAdmin ? "bg-zinc-800/50 border-zinc-700" : p ? "" : "bg-gray-50 border-gray-100"}`} style={p ? { backgroundColor: secondaryBg, borderColor: `${textHex}15` } : undefined}>
                 <div className="flex gap-2">
-                  <input type="text" placeholder="Altura máquina, ajustes..." className={`flex-1 p-2 rounded-lg text-xs outline-none ${isAdmin ? "bg-zinc-900 border-zinc-700 text-white" : "bg-white border-gray-200 text-gray-900"} border`} maxLength="100" value={noteInput} onChange={e => setNoteInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (noteInput.trim() && (onAddExerciseNote(safeName, noteInput), setNoteInput("")))} />
-                  <button onClick={() => { if(noteInput.trim()) { onAddExerciseNote(safeName, noteInput); setNoteInput(""); } }} className={`px-3 rounded-lg font-bold text-[9px] ${isAdmin ? "bg-amber-500 text-black" : "bg-blue-500 text-white"}`}>+</button>
+                  <input type="text" placeholder="Altura máquina, ajustes..." className={`flex-1 p-2 rounded-lg text-xs outline-none ${isAdmin ? "bg-zinc-900 border-zinc-700 text-white" : p ? "" : "bg-white border-gray-200 text-gray-900"} border`} style={p ? { backgroundColor: p.dark, borderColor: `${textHex}20`, color: textHex } : undefined} maxLength="100" value={noteInput} onChange={e => setNoteInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (noteInput.trim() && (onAddExerciseNote(safeName, noteInput), setNoteInput("")))} />
+                  <button onClick={() => { if(noteInput.trim()) { onAddExerciseNote(safeName, noteInput); setNoteInput(""); } }} className={`px-3 rounded-lg font-bold text-[9px] ${isAdmin ? "bg-amber-500 text-black" : p ? "" : "bg-blue-500 text-white"}`} style={p ? { backgroundColor: accentHex, color: p.dark } : undefined}>+</button>
                 </div>
                 <div className="space-y-1">
                   {(Array.isArray(exerciseNotes) ? exerciseNotes : []).slice(0, 5).map((note, i) => (
-                    <div key={i} className={`flex justify-between items-start p-2 rounded-lg text-[9px] ${isAdmin ? "bg-zinc-900/50" : "bg-white"}`}>
-                      <span className={isAdmin ? "text-zinc-300" : "text-gray-700"}>{String((note.text || "")).slice(0, 100)}</span>
-                      <span className={`text-[8px] ${isAdmin ? "text-zinc-500" : "text-gray-400"}`}>{String(note.date || "")}</span>
+                    <div key={i} className={`flex justify-between items-start p-2 rounded-lg text-[9px] ${isAdmin ? "bg-zinc-900/50" : p ? "" : "bg-white"}`} style={p ? { backgroundColor: `${p.dark}cc` } : undefined}>
+                      <span className={isAdmin ? "text-zinc-300" : p ? "" : "text-gray-700"} style={p ? { color: subtextHex } : undefined}>{String((note.text || "")).slice(0, 100)}</span>
+                      <span className={`text-[8px] ${isAdmin ? "text-zinc-500" : p ? "" : "text-gray-400"}`} style={p ? { color: dimTextHex } : undefined}>{String(note.date || "")}</span>
                     </div>
                   ))}
                 </div>
@@ -965,16 +975,16 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
           </div>
 
           <div className="flex gap-2 mt-6">
-            <input type="number" placeholder={suggestedWeight > 0 ? `${suggestedWeight}kg` : logs.length > 0 ? `${logs[0].weight}kg` : "Kg..."} className={`flex-1 min-w-0 border rounded-xl p-3 text-sm font-bold outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"}`} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localW} onChange={e => setLocalW(e.target.value)} />
-            <input type="number" placeholder={logs.length > 0 ? String(logs[0].reps) : "Reps"} className={`w-16 shrink-0 border rounded-xl p-3 text-sm font-bold text-center outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"}`} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localR} onChange={e => setLocalR(e.target.value)} />
-            <button onClick={() => setShowCalc(!showCalc)} className={`px-3 shrink-0 rounded-xl transition-all shadow-md border ${isAdmin ? (showCalc ? "bg-amber-500 text-black border-amber-500" : "bg-zinc-800 text-zinc-400 border-zinc-700") : (showCalc ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-400 border-gray-200")}`}><Calculator size={20}/></button>
-            <button onClick={handleAdd} className={`px-4 shrink-0 rounded-xl transition-all active:scale-95 shadow-md ${isAdmin ? "bg-amber-500 text-black" : "bg-gray-900 text-white"}`}><PlusCircle size={20}/></button>
+            <input type="number" placeholder={suggestedWeight > 0 ? `${suggestedWeight}kg` : logs.length > 0 ? `${logs[0].weight}kg` : "Kg..."} className={`flex-1 min-w-0 border rounded-xl p-3 text-sm font-bold outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" : p ? "" : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"}`} style={p ? { backgroundColor: secondaryBg, borderColor: `${textHex}20`, color: textHex } : undefined} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localW} onChange={e => setLocalW(e.target.value)} />
+            <input type="number" placeholder={logs.length > 0 ? String(logs[0].reps) : "Reps"} className={`w-16 shrink-0 border rounded-xl p-3 text-sm font-bold text-center outline-none ${isAdmin ? "bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500" : p ? "" : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"}`} style={p ? { backgroundColor: secondaryBg, borderColor: `${textHex}20`, color: textHex } : undefined} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} value={localR} onChange={e => setLocalR(e.target.value)} />
+            <button onClick={() => setShowCalc(!showCalc)} className={`px-3 shrink-0 rounded-xl transition-all shadow-md border ${isAdmin ? (showCalc ? "bg-amber-500 text-black border-amber-500" : "bg-zinc-800 text-zinc-400 border-zinc-700") : p ? "" : (showCalc ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-400 border-gray-200")}`} style={p ? (showCalc ? { backgroundColor: accentHex, color: p.dark, borderColor: accentHex } : { backgroundColor: secondaryBg, color: subtextHex, borderColor: `${textHex}20` }) : undefined}><Calculator size={20}/></button>
+            <button onClick={handleAdd} className={`px-4 shrink-0 rounded-xl transition-all active:scale-95 shadow-md ${isAdmin ? "bg-amber-500 text-black" : p ? "" : "bg-gray-900 text-white"}`} style={p ? { backgroundColor: accentHex, color: p.dark } : undefined}><PlusCircle size={20}/></button>
           </div>
           {showCalc && <PlateDisplay weight={weightToCalc} />}
         </div>
         {safeTip && (
-          <div className={`mx-6 mb-6 p-4 rounded-2xl border flex gap-3 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : "bg-blue-50 border-blue-100"}`}>
-            <Info size={16} className={`${textAccent} shrink-0 mt-0.5`} /><p className={`text-xs italic leading-relaxed ${isAdmin ? 'text-zinc-400' : 'text-gray-700'}`}>"{safeTip}"</p>
+          <div className={`mx-6 mb-6 p-4 rounded-2xl border flex gap-3 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : p ? "" : "bg-blue-50 border-blue-100"}`} style={p ? { backgroundColor: `${accentHex}15`, borderColor: `${accentHex}25` } : undefined}>
+            <Info size={16} className={`${isAdmin ? textAccent : ''} shrink-0 mt-0.5`} style={p ? { color: accentHex } : undefined} /><p className={`text-xs italic leading-relaxed ${isAdmin ? 'text-zinc-400' : p ? '' : 'text-gray-700'}`} style={p ? { color: subtextHex } : undefined}>"{safeTip}"</p>
           </div>
         )}
       </div>
@@ -1080,6 +1090,13 @@ export default function App() {
   const [showAddExercisePanel, setShowAddExercisePanel] = useState(false);
   const [iconDropdownOpen, setIconDropdownOpen] = useState(null);
   const [newDayIconDropdownOpen, setNewDayIconDropdownOpen] = useState(false);
+
+  // AI Routine Generator
+  const [showAiGenerator, setShowAiGenerator] = useState(false);
+  const [aiPromptText, setAiPromptText] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGeneratedRoutine, setAiGeneratedRoutine] = useState(null);
+  const [aiError, setAiError] = useState("");
 
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
@@ -1289,6 +1306,8 @@ export default function App() {
   }, [loginLockedUntil]);
 
   // CARGA DE DATOS DE FIREBASE
+  // OPTIMIZACIÓN: Clientes escuchan solo su documento + entrenador (2 reads por cambio)
+  // Admin escucha toda la colección solo cuando está activo
   useEffect(() => {
     if (!loggedInUser) {
       setDataLoaded(true);
@@ -1302,70 +1321,95 @@ export default function App() {
       setDataLoaded(true);
       return;
     }
-    // With Firestore persistence enabled, onSnapshot serves cached data offline
-    // IMPORTANTE: snap.metadata.fromCache nos dice si los datos vienen de la caché local
-    // o del servidor. NUNCA sobrescribir Firestore con INITIAL_DB si solo tenemos caché vacía,
-    // porque al reinstalar el APK la caché está vacía pero el servidor tiene datos reales.
-    const unsub = onSnapshot(collection(db_cloud, COLLECTION_NAME), (snap) => {
-      const cloud = {};
-      snap.forEach(d => { cloud[d.id] = d.data(); });
-      
-      const isFromCache = snap.metadata.fromCache;
-      // Leer lista de usuarios eliminados intencionalmente
-      const deletedList = cloud['_deleted_users']?.ids || [];
-      // Eliminar el documento meta del estado visible
-      delete cloud['_deleted_users'];
-      
-      if (Object.keys(cloud).length === 0) {
-         if (isFromCache) {
-           // Caché vacía (ej: APK recién instalado) - NO escribir INITIAL_DB al servidor
-           log('⏳ Cache vacía, esperando datos del servidor...');
-           setDb(INITIAL_DB);
-           setDataLoaded(true);
-           return;
-         }
-         // Servidor confirmó que la colección está vacía - primera vez, poblar con INITIAL_DB
-         log('🆕 Colección vacía confirmada por servidor, inicializando...');
-         Object.keys(INITIAL_DB).forEach(k => {
-           if (!deletedList.includes(k)) {
-             setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync error:", syncErr));
-             cloud[k] = INITIAL_DB[k];
-           }
-         });
-      } else {
-         // Cloud tiene datos: agregar SOLO usuarios faltantes que NO fueron eliminados
-         if (!isFromCache) {
-           Object.keys(INITIAL_DB).forEach(k => {
-             if (deletedList.includes(k)) return; // Fue eliminado intencionalmente, NO re-agregar
-             if (!cloud[k]) {
-               setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync missing user error:", syncErr));
-               cloud[k] = INITIAL_DB[k];
-             } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
-               if (INITIAL_DB[k]) {
-                 cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
-                 setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(syncErr => warn("Sync workout error:", syncErr));
-               }
-             }
-           });
-         }
-      }
-      setDb(cloud);
-      setDataLoaded(true);
-    }, (snapErr) => {
-      warn("Firebase Snapshot Error:", snapErr);
-      setDb(INITIAL_DB);
-      setDataLoaded(true);
-    });
 
-    return () => unsub();
+    const isCoach = loggedInUser === 'entrenador' || loggedInUser === 'coach';
+
+    if (isCoach) {
+      // ADMIN: escucha toda la colección (necesita ver todos los clientes)
+      const unsub = onSnapshot(collection(db_cloud, COLLECTION_NAME), (snap) => {
+        const cloud = {};
+        snap.forEach(d => { cloud[d.id] = d.data(); });
+        
+        const isFromCache = snap.metadata.fromCache;
+        const deletedList = cloud['_deleted_users']?.ids || [];
+        delete cloud['_deleted_users'];
+        
+        if (Object.keys(cloud).length === 0) {
+          if (isFromCache) {
+            log('⏳ Cache vacía, esperando datos del servidor...');
+            setDb(INITIAL_DB);
+            setDataLoaded(true);
+            return;
+          }
+          log('🆕 Colección vacía confirmada por servidor, inicializando...');
+          Object.keys(INITIAL_DB).forEach(k => {
+            if (!deletedList.includes(k)) {
+              setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync error:", syncErr));
+              cloud[k] = INITIAL_DB[k];
+            }
+          });
+        } else {
+          if (!isFromCache) {
+            Object.keys(INITIAL_DB).forEach(k => {
+              if (deletedList.includes(k)) return;
+              if (!cloud[k]) {
+                setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync missing user error:", syncErr));
+                cloud[k] = INITIAL_DB[k];
+              } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
+                if (INITIAL_DB[k]) {
+                  cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
+                  setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(syncErr => warn("Sync workout error:", syncErr));
+                }
+              }
+            });
+          }
+        }
+        setDb(cloud);
+        setDataLoaded(true);
+      }, (snapErr) => {
+        warn("Firebase Snapshot Error:", snapErr);
+        setDb(INITIAL_DB);
+        setDataLoaded(true);
+      });
+      return () => unsub();
+    } else {
+      // CLIENTE: escucha solo su propio documento + el del entrenador (frases motivacionales)
+      // Esto reduce lecturas de N docs × cada cambio → 2 docs × cada cambio
+      const unsubUser = onSnapshot(doc(db_cloud, COLLECTION_NAME, loggedInUser), (snap) => {
+        if (snap.exists()) {
+          setDb(prev => ({ ...prev, [loggedInUser]: snap.data() }));
+        } else {
+          // User doc doesn't exist in Firestore, check INITIAL_DB
+          const initial = INITIAL_DB[loggedInUser];
+          if (initial) {
+            setDoc(doc(db_cloud, COLLECTION_NAME, loggedInUser), initial).catch(() => {});
+            setDb(prev => ({ ...prev, [loggedInUser]: initial }));
+          }
+        }
+        setDataLoaded(true);
+      }, (snapErr) => {
+        warn("User snapshot error:", snapErr);
+        const fallback = INITIAL_DB[loggedInUser];
+        if (fallback) setDb(prev => ({ ...prev, [loggedInUser]: fallback }));
+        setDataLoaded(true);
+      });
+
+      // Escuchar doc del entrenador para frases motivacionales en tiempo real
+      const unsubCoach = onSnapshot(doc(db_cloud, COLLECTION_NAME, 'entrenador'), (snap) => {
+        if (snap.exists()) {
+          const coachData = snap.data();
+          setDb(prev => ({ ...prev, entrenador: coachData }));
+          if (coachData.currentMotivationalPhrase) {
+            setDailyMotivationalPhrase(coachData.currentMotivationalPhrase);
+          }
+        }
+      }, () => { /* ignore coach snapshot errors for clients */ });
+
+      return () => { unsubUser(); unsubCoach(); };
+    }
   }, [loggedInUser]);
 
-  // Sync motivacional phrase in real-time for clients (onSnapshot updates db)
-  useEffect(() => {
-    if (!loggedInUser || loggedInUser === 'entrenador' || loggedInUser === 'coach') return;
-    const coachPhrase = db['entrenador']?.currentMotivationalPhrase;
-    if (coachPhrase) setDailyMotivationalPhrase(coachPhrase);
-  }, [db, loggedInUser]);
+  // Sync motivacional phrase in real-time for clients (handled inside onSnapshot for client mode)
 
   // Resetear estados cuando cambia el día que se edita
   useEffect(() => {
@@ -2035,6 +2079,158 @@ export default function App() {
 
   const startTimerHook = useCallback((s) => { setTimerDuration(s); setTimerKey((k) => k + 1); }, []);
   const openImageManagerCb = useCallback((dayId, exName) => { setImageManagerTarget({ dayId, exName }); setImageManagerOpen(true); }, []);
+  const renderAdminExerciseCard = (ex, idx, exercises) => (
+    <>
+      <div className="relative h-44 bg-zinc-800">
+        <img src={ex.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
+        <div className="absolute top-3 left-3 flex gap-2">
+          <button onClick={() => { setImageManagerTarget({ dayId: editingDayId, exName: ex.name }); setImageManagerOpen(true); }} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-white flex items-center gap-1 active:scale-95"><Camera size={14}/><span className="text-[8px] font-bold">Imagen</span></button>
+        </div>
+        <div className="absolute top-3 right-3 flex gap-1.5">
+          {idx > 0 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx-1], exes[idx]] = [exes[idx], exes[idx-1]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ArrowLeft size={14}/></button>}
+          {idx < exercises.length - 1 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx], exes[idx+1]] = [exes[idx+1], exes[idx]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ChevronRight size={14}/></button>}
+          <button onClick={() => setAdminEditingExIdx(adminEditingExIdx === idx ? null : idx)} className={`backdrop-blur-sm p-2 rounded-xl active:scale-90 ${adminEditingExIdx === idx ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}><Edit3 size={14}/></button>
+          <button onClick={() => removeExerciseFromDay(editingDayId, idx)} className="bg-red-500/80 backdrop-blur-sm p-2 rounded-xl text-white active:scale-90"><Trash2 size={14}/></button>
+        </div>
+        <div className="absolute bottom-3 left-4 text-white">
+          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-black inline-block mb-1">{String(ex.mus || "Fuerza")}</span>
+          <h4 className="text-lg font-black leading-tight">{String(ex.name || "")}</h4>
+        </div>
+        {ex.yt && <a href={ex.yt} target="_blank" rel="noreferrer" className="absolute bottom-3 right-4 bg-white/20 p-2.5 rounded-xl text-white hover:bg-red-500 transition-colors"><Youtube size={18}/></a>}
+      </div>
+      <div className="p-5">
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-zinc-800 p-3 rounded-xl text-center">
+            <p className="text-[9px] text-zinc-500 font-bold uppercase">Series</p>
+            <p className="text-xl font-black text-amber-500">{String(ex.s || 3)}</p>
+          </div>
+          <div className="bg-zinc-800 p-3 rounded-xl text-center">
+            <p className="text-[9px] text-zinc-500 font-bold uppercase">Reps</p>
+            <p className="text-xl font-black text-amber-500">{String(ex.r || "12")}</p>
+          </div>
+        </div>
+        {ex.tip && (
+          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex gap-3 mt-4">
+            <Info size={16} className="text-amber-500 shrink-0 mt-0.5"/>
+            <p className="text-xs italic text-zinc-400 leading-relaxed">"{String(ex.tip)}"</p>
+          </div>
+        )}
+        {adminEditingExIdx === idx && (
+          <div className="mt-4 pt-4 border-t border-zinc-700 space-y-3 animate-in slide-in-from-top-2 duration-200">
+            <div>
+              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Nombre</label>
+              <input key={`ex-name-${editingDayId}-${idx}`} defaultValue={String(ex.name || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'name', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl font-bold text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Series</label>
+                <input type="number" key={`ex-s-${editingDayId}-${idx}`} defaultValue={String(ex.s || 3)} onBlur={e => modifyExerciseData(editingDayId, idx, 's', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
+              </div>
+              <div>
+                <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Reps</label>
+                <input key={`ex-r-${editingDayId}-${idx}`} defaultValue={String(ex.r || "12")} onBlur={e => modifyExerciseData(editingDayId, idx, 'r', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
+              </div>
+            </div>
+            <div>
+              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Grupo muscular</label>
+              <input key={`ex-mus-${editingDayId}-${idx}`} defaultValue={String(ex.mus || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'mus', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" />
+            </div>
+            <div>
+              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Link YouTube</label>
+              <input key={`ex-yt-${editingDayId}-${idx}`} defaultValue={String(ex.yt || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'yt', e.target.value)} placeholder="https://..." className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" />
+            </div>
+            <div>
+              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Tip / Consejo</label>
+              <textarea key={`ex-tip-${editingDayId}-${idx}`} defaultValue={String(ex.tip || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'tip', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" rows="2" />
+            </div>
+            <button onClick={() => setAdminEditingExIdx(null)} className="w-full bg-amber-500 text-black font-black py-2.5 rounded-xl text-[10px] uppercase active:scale-95">✓ Listo</button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  const generateAiRoutine = async () => {
+    if (!aiPromptText.trim()) return;
+    setAiGenerating(true);
+    setAiError("");
+    setAiGeneratedRoutine(null);
+    const knownExercises = [...EJERCICIOS_PREDEFINIDOS, ...ATHLOS_FORGE_EXERCISES].map(e => e.name);
+    const knownGroups = GRUPOS_MUSCULARES.join(', ');
+    const prompt = `Eres un entrenador personal experto. Genera una rutina de entrenamiento basada en estas indicaciones del coach:
+
+"${aiPromptText.slice(0, 1000)}"
+
+Responde SOLO con un JSON válido (sin markdown, sin backticks, sin explicaciones) con esta estructura exacta:
+{
+  "days": [
+    {
+      "title": "DÍA 1: Nombre descriptivo",
+      "focus": "Hipertrofia/Fuerza/Cardio/etc",
+      "exercises": [
+        { "name": "Nombre del ejercicio", "s": 4, "r": "10-12", "mus": "Grupo muscular", "tip": "Consejo técnico breve" }
+      ]
+    }
+  ]
+}
+
+Reglas:
+- Grupos musculares válidos: ${knownGroups}
+- Usa preferentemente estos ejercicios conocidos: ${knownExercises.slice(0, 80).join(', ')}
+- "s" es número de series (entero), "r" es reps (string, puede ser "8-10", "12", "Fallo", "30seg")
+- "tip" debe ser un consejo técnico útil y breve
+- Genera entre 1 y 6 días según lo pedido
+- Cada día entre 4 y 8 ejercicios
+- Solo devuelve el JSON, nada más`;
+
+    try {
+      const raw = await callGeminiAPI(prompt);
+      const cleaned = raw.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (!parsed.days || !Array.isArray(parsed.days) || parsed.days.length === 0) {
+        throw new Error("La IA no generó días válidos");
+      }
+      for (const day of parsed.days) {
+        if (!day.title || !Array.isArray(day.exercises)) throw new Error("Formato de día inválido");
+        day.exercises = day.exercises.map(ex => ({
+          name: sanitizeInput(String(ex.name || "Ejercicio").slice(0, 50)),
+          s: Math.max(1, Math.min(10, parseInt(ex.s) || 3)),
+          r: sanitizeInput(String(ex.r || "12").slice(0, 20)),
+          mus: sanitizeInput(String(ex.mus || "Fuerza").slice(0, 30)),
+          tip: sanitizeInput(String(ex.tip || "").slice(0, 200)),
+          yt: "",
+          img: (() => { const match = [...EJERCICIOS_PREDEFINIDOS, ...ATHLOS_FORGE_EXERCISES].find(p => p.name.toLowerCase() === String(ex.name || "").toLowerCase()); return match?.img || ""; })()
+        }));
+      }
+      setAiGeneratedRoutine(parsed);
+    } catch (e) {
+      setAiError(e.message === "La IA no generó días válidos" || e.message === "Formato de día inválido" ? e.message : "Error al procesar la respuesta de la IA. Intenta con otras indicaciones.");
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const applyAiRoutine = () => {
+    if (!aiGeneratedRoutine || !editingClientId) return;
+    updateUserInCloud(editingClientId, u => {
+      const existingDays = Array.isArray(u.workoutData?.days) ? u.workoutData.days : [];
+      const newDays = aiGeneratedRoutine.days.map(d => ({
+        id: Date.now() + Math.random() * 1000,
+        title: d.title,
+        focus: d.focus || "",
+        warmupType: "warmupLower",
+        icon: "dumbbell",
+        exercises: d.exercises
+      }));
+      return { ...u, workoutData: { ...u.workoutData, days: [...existingDays, ...newDays] } };
+    });
+    showSuccess(`${aiGeneratedRoutine.days.length} días añadidos ✨`);
+    setAiGeneratedRoutine(null);
+    setAiPromptText("");
+    setShowAiGenerator(false);
+  };
+
   const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); setDaySearchQuery(""); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const updateImageHook = useCallback((dayId, exName, newImgBase64) => {
@@ -2232,7 +2428,7 @@ export default function App() {
   const palette = !isAdminMode ? getPaletteById(preferredPaletteId) : null;
 
   return (
-    <div className="min-h-screen font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
+    <div className="min-h-full font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
       <BackButtonExitHandler
         isEnabled={!!loggedInUser}
         canGoBack={selectedDay !== null || activeTab !== "home" || isEditingClientRoutine || editingDayId !== null}
@@ -2403,6 +2599,94 @@ export default function App() {
                             </div>
                             <button onClick={() => { if(newDay.title?.trim()) { updateUserInCloud(editingClientId, u => ({ ...u, workoutData: { ...u.workoutData, days: [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : []), { id: Date.now(), title: sanitizeInput(newDay.title), focus: sanitizeInput(newDay.focus), warmupType: newDay.warmupType, icon: newDay.icon, exercises: [] }] } })); setNewDay({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" }); showSuccess("Día creado ✨"); } }} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">+ Crear Día</button>
                           </div>
+
+                          {/* 🤖 AI ROUTINE GENERATOR */}
+                          <div className="mt-4">
+                            <button onClick={() => { setShowAiGenerator(!showAiGenerator); setAiGeneratedRoutine(null); setAiError(""); }} className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all border-2 ${showAiGenerator ? 'bg-purple-500 text-white border-purple-500 shadow-lg shadow-purple-500/20' : 'bg-zinc-900 text-purple-400 border-purple-500/30 hover:border-purple-500/60 border-dashed'}`}>
+                              <Brain size={16}/> Generar Rutina con IA
+                            </button>
+
+                            {showAiGenerator && (
+                              <div className="mt-3 bg-zinc-800/90 backdrop-blur-sm p-6 rounded-2xl border border-purple-500/30 space-y-4 animate-in slide-in-from-top-4 duration-300">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="p-2 rounded-xl bg-purple-500/20"><Brain size={16} className="text-purple-400"/></div>
+                                  <div>
+                                    <h4 className="text-sm font-black text-white">Asistente IA</h4>
+                                    <p className="text-[9px] text-zinc-500">Describe la rutina que necesitas y la IA la creará</p>
+                                  </div>
+                                </div>
+
+                                <textarea
+                                  value={aiPromptText}
+                                  onChange={e => setAiPromptText(e.target.value)}
+                                  placeholder={"Ej: Rutina de 4 días para hipertrofia de tren superior.\nDía 1: Pecho y tríceps, Día 2: Espalda y bíceps...\n\nO simplemente: Rutina fullbody 3 días para principiante mujer"}
+                                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-4 text-white text-xs outline-none focus:border-purple-500 transition-colors resize-none"
+                                  rows="4"
+                                  maxLength="1000"
+                                />
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[8px] text-zinc-600">{aiPromptText.length}/1000</span>
+                                  <button
+                                    onClick={generateAiRoutine}
+                                    disabled={aiGenerating || !aiPromptText.trim()}
+                                    className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 transition-all active:scale-95 ${aiGenerating || !aiPromptText.trim() ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed' : 'bg-purple-500 text-white shadow-lg shadow-purple-500/20 hover:bg-purple-400'}`}
+                                  >
+                                    {aiGenerating ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/> Generando...</> : <><Zap size={14}/> Generar</>}
+                                  </button>
+                                </div>
+
+                                {aiError && (
+                                  <div className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex items-start gap-2">
+                                    <X size={14} className="text-red-400 shrink-0 mt-0.5"/>
+                                    <p className="text-[10px] text-red-400">{aiError}</p>
+                                  </div>
+                                )}
+
+                                {aiGeneratedRoutine && (
+                                  <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-300">
+                                    <div className="flex items-center gap-2 py-2">
+                                      <div className="h-px flex-1 bg-purple-500/30"/>
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">Vista Previa</span>
+                                      <div className="h-px flex-1 bg-purple-500/30"/>
+                                    </div>
+
+                                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                                      {aiGeneratedRoutine.days.map((day, di) => (
+                                        <div key={di} className="bg-zinc-900 rounded-2xl border border-zinc-700 overflow-hidden">
+                                          <div className="bg-zinc-800 px-4 py-3 border-b border-zinc-700">
+                                            <h5 className="text-sm font-black text-white">{day.title}</h5>
+                                            {day.focus && <span className="text-[9px] text-amber-500 font-bold uppercase">{day.focus}</span>}
+                                          </div>
+                                          <div className="p-3 space-y-1.5">
+                                            {day.exercises.map((ex, ei) => (
+                                              <div key={ei} className="flex items-center gap-3 p-2.5 rounded-xl bg-zinc-800/50">
+                                                {ex.img ? <img src={ex.img} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" onError={imgError}/> : <div className="w-10 h-10 rounded-lg bg-zinc-700 flex items-center justify-center shrink-0"><Dumbbell size={14} className="text-zinc-500"/></div>}
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="text-xs font-bold text-white truncate">{ex.name}</p>
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-[9px] text-purple-400 font-bold">{ex.s}×{ex.r}</span>
+                                                    <span className="text-[8px] text-zinc-600">•</span>
+                                                    <span className="text-[8px] text-zinc-500">{ex.mus}</span>
+                                                  </div>
+                                                  {ex.tip && <p className="text-[8px] text-zinc-600 truncate mt-0.5">💡 {ex.tip}</p>}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="flex gap-2 pt-2">
+                                      <button onClick={applyAiRoutine} className="flex-1 bg-purple-500 text-white font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"><Plus size={14}/> Aplicar Rutina ({aiGeneratedRoutine.days.length} días)</button>
+                                      <button onClick={() => setAiGeneratedRoutine(null)} className="px-4 bg-zinc-700 text-zinc-300 font-bold py-3 rounded-xl text-[10px] uppercase active:scale-95"><Trash2 size={14}/></button>
+                                    </div>
+                                    <p className="text-[8px] text-zinc-600 text-center">Los días se añadirán a la rutina existente. Podrás editarlos después.</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </>
                       ) : (
                         /* VISTA VISUAL DE EJERCICIOS DEL DÍA - Misma vista que el cliente */
@@ -2446,85 +2730,49 @@ export default function App() {
 
                                 {/* Ejercicios en formato visual (como las ve el cliente) */}
                                 <div className="space-y-6">
-                                  {exercises.map((ex, idx) => (
-                                    <div key={idx} className="bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg">
-                                      {/* Imagen del ejercicio */}
-                                      <div className="relative h-44 bg-zinc-800">
-                                        <img src={ex.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
-                                        {/* Controles del ejercicio */}
-                                        <div className="absolute top-3 left-3 flex gap-2">
-                                          <button onClick={() => { setImageManagerTarget({ dayId: editingDayId, exName: ex.name }); setImageManagerOpen(true); }} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-white flex items-center gap-1 active:scale-95"><Camera size={14}/><span className="text-[8px] font-bold">Imagen</span></button>
-                                        </div>
-                                        <div className="absolute top-3 right-3 flex gap-1.5">
-                                          {idx > 0 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx-1], exes[idx]] = [exes[idx], exes[idx-1]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ArrowLeft size={14}/></button>}
-                                          {idx < exercises.length - 1 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx], exes[idx+1]] = [exes[idx+1], exes[idx]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ChevronRight size={14}/></button>}
-                                          <button onClick={() => setAdminEditingExIdx(adminEditingExIdx === idx ? null : idx)} className={`backdrop-blur-sm p-2 rounded-xl active:scale-90 ${adminEditingExIdx === idx ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}><Edit3 size={14}/></button>
-                                          <button onClick={() => removeExerciseFromDay(editingDayId, idx)} className="bg-red-500/80 backdrop-blur-sm p-2 rounded-xl text-white active:scale-90"><Trash2 size={14}/></button>
-                                        </div>
-                                        {/* Info del ejercicio sobre la imagen */}
-                                        <div className="absolute bottom-3 left-4 text-white">
-                                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-black inline-block mb-1">{String(ex.mus || "Fuerza")}</span>
-                                          <h4 className="text-lg font-black leading-tight">{String(ex.name || "")}</h4>
-                                        </div>
-                                        {ex.yt && <a href={ex.yt} target="_blank" rel="noreferrer" className="absolute bottom-3 right-4 bg-white/20 p-2.5 rounded-xl text-white hover:bg-red-500 transition-colors"><Youtube size={18}/></a>}
-                                      </div>
-
-                                      {/* Info rápida: Series y Reps */}
-                                      <div className="p-5">
-                                        <div className="grid grid-cols-2 gap-3 mb-4">
-                                          <div className="bg-zinc-800 p-3 rounded-xl text-center">
-                                            <p className="text-[9px] text-zinc-500 font-bold uppercase">Series</p>
-                                            <p className="text-xl font-black text-amber-500">{String(ex.s || 3)}</p>
+                                  {(() => {
+                                    const rendered = [];
+                                    let idx = 0;
+                                    while (idx < exercises.length) {
+                                      const ex = exercises[idx];
+                                      const isSuperset = ex.superset && idx < exercises.length - 1;
+                                      if (isSuperset) {
+                                        const ex2 = exercises[idx + 1];
+                                        rendered.push(
+                                          <div key={idx} className="relative border-2 border-purple-500/40 rounded-[2.5rem] p-2 bg-purple-500/5">
+                                            <div className="flex items-center justify-center gap-2 py-2 mb-2">
+                                              <div className="h-px flex-1 bg-purple-500/30" />
+                                              <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Zap size={12}/> Superserie</span>
+                                              <div className="h-px flex-1 bg-purple-500/30" />
+                                            </div>
+                                            {[ex, ex2].map((ssEx, ssI) => {
+                                              const realIdx = idx + ssI;
+                                              return (
+                                                <div key={realIdx} className={`bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg ${ssI === 0 ? 'mb-2' : ''}`}>
+                                                  {renderAdminExerciseCard(ssEx, realIdx, exercises)}
+                                                </div>
+                                              );
+                                            })}
+                                            <button onClick={() => modifyExerciseData(editingDayId, idx, 'superset', false)} className="w-full mt-2 py-2 text-[9px] font-bold text-purple-400 hover:text-purple-300 uppercase flex items-center justify-center gap-1"><X size={12}/> Quitar superserie</button>
                                           </div>
-                                          <div className="bg-zinc-800 p-3 rounded-xl text-center">
-                                            <p className="text-[9px] text-zinc-500 font-bold uppercase">Reps</p>
-                                            <p className="text-xl font-black text-amber-500">{String(ex.r || "12")}</p>
+                                        );
+                                        idx += 2;
+                                      } else {
+                                        rendered.push(
+                                          <div key={idx}>
+                                            <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg">
+                                              {renderAdminExerciseCard(ex, idx, exercises)}
+                                            </div>
+                                            {idx < exercises.length - 1 && !exercises[idx + 1]?.superset && !(idx > 0 && exercises[idx - 1]?.superset) && (
+                                              <button onClick={() => modifyExerciseData(editingDayId, idx, 'superset', true)} className="w-full mt-2 py-1.5 text-[9px] font-bold text-zinc-600 hover:text-purple-400 uppercase flex items-center justify-center gap-1 transition-colors"><Zap size={10}/> Hacer superserie con siguiente</button>
+                                            )}
                                           </div>
-                                        </div>
-                                        {ex.tip && (
-                                          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex gap-3 mt-4">
-                                            <Info size={16} className="text-amber-500 shrink-0 mt-0.5"/>
-                                            <p className="text-xs italic text-zinc-400 leading-relaxed">"{String(ex.tip)}"</p>
-                                          </div>
-                                        )}
-
-                                        {/* Panel de edición expandible */}
-                                        {adminEditingExIdx === idx && (
-                                          <div className="mt-4 pt-4 border-t border-zinc-700 space-y-3 animate-in slide-in-from-top-2 duration-200">
-                                            <div>
-                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Nombre</label>
-                                              <input key={`ex-name-${editingDayId}-${idx}`} defaultValue={String(ex.name || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'name', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl font-bold text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                              <div>
-                                                <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Series</label>
-                                                <input type="number" key={`ex-s-${editingDayId}-${idx}`} defaultValue={String(ex.s || 3)} onBlur={e => modifyExerciseData(editingDayId, idx, 's', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
-                                              </div>
-                                              <div>
-                                                <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Reps</label>
-                                                <input key={`ex-r-${editingDayId}-${idx}`} defaultValue={String(ex.r || "12")} onBlur={e => modifyExerciseData(editingDayId, idx, 'r', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-sm outline-none border border-zinc-700 focus:border-amber-500" />
-                                              </div>
-                                            </div>
-                                            <div>
-                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Grupo muscular</label>
-                                              <input key={`ex-mus-${editingDayId}-${idx}`} defaultValue={String(ex.mus || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'mus', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" />
-                                            </div>
-                                            <div>
-                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Link YouTube</label>
-                                              <input key={`ex-yt-${editingDayId}-${idx}`} defaultValue={String(ex.yt || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'yt', e.target.value)} placeholder="https://..." className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" />
-                                            </div>
-                                            <div>
-                                              <label className="text-[8px] text-amber-500 uppercase font-black block mb-1">Tip / Consejo</label>
-                                              <textarea key={`ex-tip-${editingDayId}-${idx}`} defaultValue={String(ex.tip || "")} onBlur={e => modifyExerciseData(editingDayId, idx, 'tip', e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl text-white text-xs outline-none border border-zinc-700 focus:border-amber-500" rows="2" />
-                                            </div>
-                                            <button onClick={() => setAdminEditingExIdx(null)} className="w-full bg-amber-500 text-black font-black py-2.5 rounded-xl text-[10px] uppercase active:scale-95">✓ Listo</button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
+                                        );
+                                        idx++;
+                                      }
+                                    }
+                                    return rendered;
+                                  })()}
 
                                 {/* BOTÓN AÑADIR EJERCICIO */}
                                 <button onClick={() => setShowAddExercisePanel(!showAddExercisePanel)} className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all border-2 border-dashed ${showAddExercisePanel ? 'bg-amber-500 text-black border-amber-500' : 'bg-zinc-900 text-amber-500 border-amber-500/30 hover:border-amber-500/60'}`}>
@@ -2707,6 +2955,7 @@ export default function App() {
                                     </div>
                                   </div>
                                 )}
+                                </div>
                               </>
                             );
                           })()}
@@ -2853,11 +3102,36 @@ export default function App() {
               </div>
             ) : null; })()}
             <div className="space-y-4">
-              {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; const allExercises = Array.isArray(liveDay.exercises) ? liveDay.exercises : []; const filtered = daySearchQuery.trim() ? allExercises.filter(ex => (ex.name || '').toLowerCase().includes(daySearchQuery.toLowerCase()) || (ex.mus || '').toLowerCase().includes(daySearchQuery.toLowerCase())) : allExercises; return filtered.map((ex, i) => {
+              {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; const allExercises = Array.isArray(liveDay.exercises) ? liveDay.exercises : []; const filtered = daySearchQuery.trim() ? allExercises.filter(ex => (ex.name || '').toLowerCase().includes(daySearchQuery.toLowerCase()) || (ex.mus || '').toLowerCase().includes(daySearchQuery.toLowerCase())) : allExercises;
+              const items = [];
+              let i = 0;
+              while (i < filtered.length) {
+                const ex = filtered[i];
                 const originalIdx = allExercises.indexOf(ex);
-                return (
-                <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} />
-              ); }); })()}
+                if (ex.superset && i < filtered.length - 1) {
+                  const nextEx = filtered[i + 1];
+                  const nextOriginalIdx = allExercises.indexOf(nextEx);
+                  items.push(
+                    <div key={`ss-${liveDay.id}-${originalIdx}`} className="rounded-[2rem] border-2 border-purple-500/30 bg-purple-500/5 p-3 space-y-3">
+                      <div className="flex items-center justify-center gap-2 py-1">
+                        <div className="h-px flex-1 bg-purple-500/20" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Zap size={12}/> Superserie</span>
+                        <div className="h-px flex-1 bg-purple-500/20" />
+                      </div>
+                      <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} palette={palette} />
+                      <div className="flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center"><Zap size={14} className="text-purple-400"/></div></div>
+                      <ExerciseCard key={`${liveDay.id}-${nextOriginalIdx}`} ex={nextEx} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[nextEx.name] || []} palette={palette} />
+                    </div>
+                  );
+                  i += 2;
+                } else {
+                  items.push(
+                    <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} palette={palette} />
+                  );
+                  i += 1;
+                }
+              }
+              return items; })()}
             </div>
           </div>
         )}
@@ -2936,11 +3210,11 @@ export default function App() {
       </div>
 
       <nav className="fixed bottom-14 left-1/2 -translate-x-1/2 backdrop-blur-md border px-6 py-5 rounded-[2.5rem] shadow-2xl flex items-center gap-6 z-50" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}20` } : isAdminMode ? { backgroundColor: '#18181bee', borderColor: '#27272a' } : { backgroundColor: '#ffffffee', borderColor: '#f3f4f6' }}>
-        <button onClick={() => navigateTo("home")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "home" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={22} /><span className="text-[8px] font-bold leading-none">Home</span></button>
-        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "day" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={22} /><span className="text-[8px] font-bold leading-none">Rutina</span></button>
-        <button onClick={() => navigateTo("stats")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={22} /><span className="text-[8px] font-bold leading-none">Stats</span></button>
-        <button onClick={() => navigateTo("progress")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "progress" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Scale size={22} /><span className="text-[8px] font-bold leading-none">Cuerpo</span></button>
-        <button onClick={() => navigateTo("journal")} className="transition-all flex flex-col items-center gap-0.5" style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b', transform: 'scale(1.25)' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={22} /><span className="text-[8px] font-bold leading-none">Diario</span></button>
+        <button onClick={() => navigateTo("home")} className={`transition-all flex flex-col items-center gap-0.5 ${activeTab === 'home' ? 'scale-125' : ''}`} style={activeTab === "home" ? { color: palette?.accent || '#f59e0b' } : { color: `${palette?.text || '#a1a1aa'}60` }}><User size={22} /><span className="text-[8px] font-bold leading-none">Home</span></button>
+        <button onClick={() => { if(selectedDay) navigateTo("day", selectedDay); else if(validDays.length>0) navigateTo("day", validDays[0]); }} className={`transition-all flex flex-col items-center gap-0.5 ${activeTab === 'day' ? 'scale-125' : ''}`} style={activeTab === "day" ? { color: palette?.accent || '#f59e0b' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Dumbbell size={22} /><span className="text-[8px] font-bold leading-none">Rutina</span></button>
+        <button onClick={() => navigateTo("stats")} className={`transition-all flex flex-col items-center gap-0.5 ${activeTab === 'stats' ? 'scale-125' : ''}`} style={activeTab === "stats" ? { color: palette?.accent || '#f59e0b' } : { color: `${palette?.text || '#a1a1aa'}60` }}><TrendingUp size={22} /><span className="text-[8px] font-bold leading-none">Stats</span></button>
+        <button onClick={() => navigateTo("progress")} className={`transition-all flex flex-col items-center gap-0.5 ${activeTab === 'progress' ? 'scale-125' : ''}`} style={activeTab === "progress" ? { color: palette?.accent || '#f59e0b' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Scale size={22} /><span className="text-[8px] font-bold leading-none">Cuerpo</span></button>
+        <button onClick={() => navigateTo("journal")} className={`transition-all flex flex-col items-center gap-0.5 ${activeTab === 'journal' ? 'scale-125' : ''}`} style={activeTab === "journal" ? { color: palette?.accent || '#f59e0b' } : { color: `${palette?.text || '#a1a1aa'}60` }}><Heart size={22} /><span className="text-[8px] font-bold leading-none">Diario</span></button>
       </nav>
 
       {/* --- MODALES --- */}
