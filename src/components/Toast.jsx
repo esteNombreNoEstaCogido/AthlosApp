@@ -53,13 +53,13 @@ export const Toast = ({
   const IconComponent = cfg.icon;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
       <div 
-        className="flex items-center gap-3 px-6 py-4 rounded-lg shadow-xl backdrop-blur"
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-md border border-white/10"
         style={{ backgroundColor: cfg.bg, color: cfg.text }}
       >
-        <IconComponent size={20} strokeWidth={2} />
-        <p className="font-semibold text-sm">{message}</p>
+        <IconComponent size={16} strokeWidth={2.5} />
+        <p className="font-bold text-xs">{message}</p>
       </div>
     </div>
   );
@@ -70,12 +70,11 @@ export const Toast = ({
  */
 export const ToastContainer = ({ toasts = [] }) => {
   return (
-    <>
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 pointer-events-none">
       {toasts.map((toast, idx) => (
         <div
           key={toast.id || idx}
-          className="fixed bottom-4 right-4 z-50 mb-4"
-          style={{ bottom: `${(idx + 1) * 80}px` }}
+          className="pointer-events-auto"
         >
           <Toast
             message={toast.message}
@@ -85,7 +84,7 @@ export const ToastContainer = ({ toasts = [] }) => {
           />
         </div>
       ))}
-    </>
+    </div>
   );
 };
 

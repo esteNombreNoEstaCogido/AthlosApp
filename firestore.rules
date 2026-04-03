@@ -19,8 +19,7 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.username.size() >= 3
         && request.resource.data.username.size() <= 50
-        && request.resource.data.password.size() >= 20
-        && request.resource.size() < 1048576;
+        && request.resource.data.password.size() >= 20;
 
       // Borrado: solo permitir (admin lo gestiona desde la app)
       allow delete: if true;

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, memo, useRef, useMemo } from "react";
-import html2pdf from "html2pdf.js";
 import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager.js";
 import { 
   sanitizeInput, sanitizeUrl, safeJSONParse, escapeHtml 
@@ -156,46 +155,97 @@ const callGeminiAPI = async (prompt) => {
 // ✅ Secure password functions imported from passwordManager.js
 // hashPassword, validatePassword are now bcryptjs-backed
 
-const generatePDFReport = (client, days) => {
+const generatePDFReport = async (client, days) => {
   const esc = escapeHtml;
+  const fallbackImg = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400';
   const html = `
-    <div style="font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5;">
-      <h1 style="color: #1a1a1a; border-bottom: 3px solid #f59e0b; padding-bottom: 10px;">📋 PLAN DE ENTRENAMIENTO</h1>
-      <h2 style="color: #666;">${esc(client.name)}</h2>
-      <p style="color: #999; font-style: italic;">${esc(client.subtitle || '')}</p>
-      <p style="color: #999; margin-bottom: 30px;"><strong>Generado:</strong> ${new Date().toLocaleDateString('es-ES')}</p>
-      
-      ${days.map(day => `
-        <div style="background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; border-left: 4px solid #f59e0b;">
-          <h3 style="color: #1a1a1a; margin: 0 0 10px 0;">${esc(day.title)}</h3>
-          <p style="color: #666; margin: 5px 0;"><strong>Enfoque:</strong> ${esc(day.focus || 'General')}</p>
-          <h4 style="color: #888; margin-top: 10px;">Ejercicios:</h4>
-          <ul style="color: #666; padding-left: 20px;">
-            ${(day.exercises || []).map(ex => `
-              <li style="margin: 8px 0;">
-                <strong>${esc(ex.name)}</strong> - ${esc(String(ex.s))} series x ${esc(String(ex.r))} reps
-                <br/><small style="color: #999;">Grupo: ${esc(ex.mus)} ${ex.tip ? '| Tip: ' + esc(ex.tip) : ''}</small>
-              </li>
-            `).join('')}
-          </ul>
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; background: #ffffff; color: #1a1a1a;">
+      <!-- Header -->
+      <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #f59e0b;">
+        <h1 style="margin: 0 0 4px 0; font-size: 26px; color: #111; letter-spacing: 2px;">ATHLOS</h1>
+        <p style="margin: 0; font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 4px;">Plan de Entrenamiento Personal</p>
+      </div>
+
+      <!-- Client Info -->
+      <div style="background: #fafafa; border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; border: 1px solid #eee;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 0;"><strong style="color: #333;">Cliente:</strong> <span style="color: #555;">${esc(client.name)}</span></td>
+            <td style="padding: 4px 0; text-align: right;"><strong style="color: #333;">Fecha:</strong> <span style="color: #555;">${new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0;"><strong style="color: #333;">Programa:</strong> <span style="color: #555;">${esc(client.subtitle || 'General')}</span></td>
+            <td style="padding: 4px 0; text-align: right;"><strong style="color: #333;">Días:</strong> <span style="color: #555;">${days.length}</span></td>
+          </tr>
+        </table>
+      </div>
+
+      ${days.map((day, dayIdx) => `
+        <!-- Day ${dayIdx + 1} -->
+        <div style="margin-bottom: 24px; page-break-inside: avoid;">
+          <div style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 12px 18px; border-radius: 10px 10px 0 0;">
+            <h2 style="margin: 0; font-size: 15px; font-weight: 800; text-transform: uppercase;">${esc(day.title)}</h2>
+            <p style="margin: 2px 0 0 0; font-size: 11px; opacity: 0.9;">${esc(day.focus || 'General')}</p>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e5e5; border-top: none;">
+            <thead>
+              <tr style="background: #f9f9f9;">
+                <th style="padding: 8px 10px; text-align: left; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee; width: 60px;">Imagen</th>
+                <th style="padding: 8px 10px; text-align: left; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee;">Ejercicio</th>
+                <th style="padding: 8px 10px; text-align: center; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee; width: 55px;">Series</th>
+                <th style="padding: 8px 10px; text-align: center; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee; width: 65px;">Reps</th>
+                <th style="padding: 8px 10px; text-align: left; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee;">Consejo</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(day.exercises || []).map((ex, i) => `
+                <tr style="border-bottom: 1px solid #f0f0f0; ${i % 2 === 1 ? 'background: #fafafa;' : ''}">
+                  <td style="padding: 8px 10px; vertical-align: middle;">
+                    <img src="${esc(ex.img || fallbackImg)}" alt="" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; display: block;" crossorigin="anonymous" />
+                  </td>
+                  <td style="padding: 8px 10px; vertical-align: middle;">
+                    <div style="font-size: 12px; font-weight: 700; color: #222;">${esc(ex.name)}</div>
+                    <div style="font-size: 9px; color: #999; margin-top: 2px;">${esc(ex.mus || '')}</div>
+                  </td>
+                  <td style="padding: 8px 10px; text-align: center; vertical-align: middle; font-size: 16px; font-weight: 800; color: #f59e0b;">${esc(String(ex.s || 3))}</td>
+                  <td style="padding: 8px 10px; text-align: center; vertical-align: middle; font-size: 14px; font-weight: 700; color: #333;">${esc(String(ex.r || '12'))}</td>
+                  <td style="padding: 8px 10px; vertical-align: middle; font-size: 10px; color: #666; font-style: italic; max-width: 160px;">${ex.tip ? esc(ex.tip) : '<span style="color:#ccc;">—</span>'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
         </div>
       `).join('')}
-      
-      <div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-radius: 8px;">
-        <p style="color: #666;"><strong>💡 Consejo del Coach:</strong> ${esc(client.advice || 'Mantén la consistencia y disfruta el proceso.')}</p>
+
+      <!-- Coach Advice -->
+      <div style="margin-top: 20px; padding: 16px 20px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; page-break-inside: avoid;">
+        <p style="margin: 0; font-size: 11px; color: #92400e;"><strong>💡 Consejo del Coach:</strong> ${esc(client.advice || 'Mantén la consistencia y disfruta el proceso.')}</p>
+      </div>
+
+      <!-- Footer -->
+      <div style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee;">
+        <p style="margin: 0; font-size: 9px; color: #bbb; letter-spacing: 2px;">ATHLOS — ENTRENAMIENTO PERSONAL</p>
       </div>
     </div>
   `;
   
   const opt = {
-    margin: 10,
+    margin: [8, 8, 8, 8],
     filename: `${client.name}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2 },
-    jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false },
+    jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   };
   
-  html2pdf().set(opt).from(html).save();
+  try {
+    const html2pdfModule = await import("html2pdf.js");
+    const html2pdf = html2pdfModule.default || html2pdfModule;
+    await html2pdf().set(opt).from(html).save();
+  } catch (e) {
+    console.error("Error generating PDF:", e);
+    alert("Error al generar el PDF. Inténtalo de nuevo.");
+  }
 };
 
 // ==========================================
@@ -931,8 +981,9 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
           <div className="flex justify-between items-center mb-2">
             <h5 className={`text-[10px] font-black uppercase tracking-widest ${isAdmin ? 'text-zinc-500' : p ? '' : 'text-gray-400'} flex items-center gap-2`} style={p ? { color: dimTextHex } : undefined}><History size={14} /> Historial</h5>
             <div className="flex gap-2">
-               <button onClick={() => onStartTimer(45)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : p ? "" : "bg-orange-50 text-orange-600 border-orange-100"}`} style={p ? { backgroundColor: `${accentHex}15`, color: accentHex, borderColor: `${accentHex}30` } : undefined}>45s</button>
-               <button onClick={() => onStartTimer(60)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500 text-black border-amber-600" : p ? "" : "bg-orange-100 text-orange-700 border-orange-200"}`} style={p ? { backgroundColor: accentHex, color: p.dark, borderColor: accentHex } : undefined}>60s</button>
+               <button onClick={() => onStartTimer(60)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : p ? "" : "bg-orange-50 text-orange-600 border-orange-100"}`} style={p ? { backgroundColor: `${accentHex}15`, color: accentHex, borderColor: `${accentHex}30` } : undefined}>60s</button>
+               <button onClick={() => onStartTimer(120)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500/20 text-amber-500 border-amber-500/30" : p ? "" : "bg-orange-100 text-orange-700 border-orange-200"}`} style={p ? { backgroundColor: `${accentHex}25`, color: accentHex, borderColor: `${accentHex}40` } : undefined}>2min</button>
+               <button onClick={() => onStartTimer(180)} className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg border transition-all active:scale-90 ${isAdmin ? "bg-amber-500 text-black border-amber-600" : p ? "" : "bg-orange-200 text-orange-800 border-orange-300"}`} style={p ? { backgroundColor: accentHex, color: p.dark, borderColor: accentHex } : undefined}>3min</button>
             </div>
           </div>
           {suggestedWeight > 0 && (
@@ -983,8 +1034,9 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
           {showCalc && <PlateDisplay weight={weightToCalc} />}
         </div>
         {safeTip && (
-          <div className={`mx-6 mb-6 p-4 rounded-2xl border flex gap-3 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : p ? "" : "bg-blue-50 border-blue-100"}`} style={p ? { backgroundColor: `${accentHex}15`, borderColor: `${accentHex}25` } : undefined}>
-            <Info size={16} className={`${isAdmin ? textAccent : ''} shrink-0 mt-0.5`} style={p ? { color: accentHex } : undefined} /><p className={`text-xs italic leading-relaxed ${isAdmin ? 'text-zinc-400' : p ? '' : 'text-gray-700'}`} style={p ? { color: subtextHex } : undefined}>"{safeTip}"</p>
+          <div className={`mt-6 p-4 rounded-2xl border flex items-start gap-3 ${isAdmin ? "bg-amber-500/10 border-amber-500/20" : p ? "" : "bg-blue-50/80 border-blue-100"}`} style={p ? { backgroundColor: `${accentHex}10`, borderColor: `${accentHex}20` } : undefined}>
+            <Info size={16} className={`${isAdmin ? textAccent : ''} shrink-0 mt-0.5`} style={p ? { color: accentHex } : undefined} />
+            <p className={`text-xs italic leading-relaxed ${isAdmin ? 'text-zinc-400' : p ? '' : 'text-gray-600'}`} style={p ? { color: subtextHex } : undefined}>"{safeTip}"</p>
           </div>
         )}
       </div>
@@ -1101,6 +1153,7 @@ export default function App() {
   const lastBackPress = useRef(0);
   const [showExitToast, setShowExitToast] = useState(false);
   const lastAppliedUpdateRef = useRef({});
+  const pendingWritesRef = useRef({});
   const adminBlurTimerRef = useRef(null);
   const initialSetupDoneRef = useRef(false);
 
@@ -1181,12 +1234,23 @@ export default function App() {
       
       if (lastAppliedUpdateRef.current[userId] !== updateKey) {
         lastAppliedUpdateRef.current[userId] = updateKey;
+        // Marcar que hay escritura pendiente para este usuario
+        pendingWritesRef.current[userId] = Date.now();
         // With Firestore persistence, setDoc queues locally offline and syncs when back online
         setIsSyncing(true);
         if (db_cloud) {
-          setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => setIsSyncing(false)).catch((writeErr) => { err('❌ Firestore write error for', userId, ':', writeErr.message); setIsSyncing(false); });
+          setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => {
+            // Limpiar pending write cuando el servidor confirma
+            delete pendingWritesRef.current[userId];
+            setIsSyncing(false);
+          }).catch((writeErr) => {
+            err('❌ Firestore write error for', userId, ':', writeErr.message);
+            delete pendingWritesRef.current[userId];
+            setIsSyncing(false);
+          });
         } else {
           warn('⚠️ Firestore not initialized, data saved locally only');
+          delete pendingWritesRef.current[userId];
           setIsSyncing(false);
         }
       }
@@ -1356,15 +1420,25 @@ export default function App() {
                 setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync missing user error:", syncErr));
                 cloud[k] = INITIAL_DB[k];
               } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
-                if (INITIAL_DB[k]) {
-                  cloud[k].workoutData = INITIAL_DB[k].workoutData || { days: [] };
-                  setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(syncErr => warn("Sync workout error:", syncErr));
-                }
+                // Solo reparar estructura, NUNCA sobreescribir con datos por defecto de INITIAL_DB
+                cloud[k].workoutData = cloud[k].workoutData || {};
+                cloud[k].workoutData.days = [];
+                setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(syncErr => warn("Sync workout fix error:", syncErr));
               }
             });
           }
         }
-        setDb(cloud);
+        // Usar functional update para respetar escrituras locales pendientes
+        setDb(prev => {
+          const merged = { ...cloud };
+          // Preservar datos locales de usuarios con escrituras pendientes
+          Object.keys(pendingWritesRef.current).forEach(userId => {
+            if (prev[userId]) {
+              merged[userId] = prev[userId];
+            }
+          });
+          return merged;
+        });
         setDataLoaded(true);
       }, (snapErr) => {
         warn("Firebase Snapshot Error:", snapErr);
@@ -3460,15 +3534,16 @@ Reglas:
       )}
 
       {/* NEW: Toast notification container */}
-      <div className="fixed bottom-32 right-4 z-40 space-y-2">
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 pointer-events-none">
         {toasts.map((toast, idx) => (
-          <Toast
-            key={idx}
-            message={toast.message}
-            type={toast.type}
-            duration={toast.duration}
-            onClose={toast.onClose}
-          />
+          <div key={toast.id || idx} className="pointer-events-auto">
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              duration={toast.duration}
+              onClose={toast.onClose}
+            />
+          </div>
         ))}
       </div>
     </div>
