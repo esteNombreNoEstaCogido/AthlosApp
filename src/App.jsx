@@ -238,13 +238,24 @@ const generatePDFReport = async (client, days) => {
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   };
   
+  // Crear un contenedor DOM temporal para html2pdf (más fiable que pasar string)
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '210mm';
+  document.body.appendChild(container);
+  
   try {
-    const html2pdfModule = await import("html2pdf.js");
+    const html2pdfModule = await import("html2pdf.js/dist/html2pdf.bundle.min.js");
     const html2pdf = html2pdfModule.default || html2pdfModule;
-    await html2pdf().set(opt).from(html).save();
+    await html2pdf().set(opt).from(container).save();
   } catch (e) {
     console.error("Error generating PDF:", e);
     alert("Error al generar el PDF. Inténtalo de nuevo.");
+  } finally {
+    document.body.removeChild(container);
   }
 };
 
@@ -500,10 +511,33 @@ const INITIAL_DB = {
       { name: "Peso Muerto", s: 3, r: "5", tip: "Carga máxima.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" }
     ]}
   ]} },
-  claudia: { username: "claudia", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Nuevo Plan", advice: "Dale todo.", logs: {}, notes: [], workoutData: { days: [
-    { id: 405, title: "Cardio & Core", focus: "Resistencia", warmupType: "warmupAthlos", exercises: [
-      { name: "Burpees", s: 3, r: "15", tip: "Ritmo constante.", mus: "Full Body", img: "https://images.unsplash.com/photo-1517836357463-d25ddfcbf042?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=vcorNYUfH30" },
-      { name: "Plancha", s: 3, r: "45s", tip: "Cuerpo recto.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=JB2oyqG50KI" }
+  claudia: { username: "claudia", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Plan Completo 4 Días", advice: "Baja controlada, subida explosiva. Sé constante y disfruta el proceso.", logs: {}, notes: [], workoutData: { days: [
+    { id: 405, title: "DÍA 1: Inferior A (Empuje/Máximo)", focus: "Piernas & Glúteo", warmupType: "warmupLower", icon: "dumbbell", exercises: [
+      { name: "Hip Thrust", s: 3, r: "8", tip: "Pausa 2\" arriba", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust+tecnica" },
+      { name: "Prensa Pies Altos", s: 3, r: "10", tip: "Empuje talones. Superserie con gemelo en prensa al fallo", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+pies+altos", superset: true },
+      { name: "Gemelo en Prensa", s: 3, r: "Fallo", tip: "Superserie con prensa pies altos", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=gemelo+en+prensa" },
+      { name: "RDL Mancuernas", s: 3, r: "10", tip: "Espalda neutra", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rdl+mancuernas+tecnica" },
+      { name: "Zancada Búlgara", s: 3, r: "12", tip: "Torso inclinado, aguantar 1s abajo", mus: "Piernas", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=zancada+bulgara+tecnica" }
+    ]},
+    { id: 406, title: "DÍA 2: Superior A (Tracción/Postura)", focus: "Espalda & Core", warmupType: "warmupAthlos", icon: "shield", exercises: [
+      { name: "Jalón al Pecho Agarre Neutro", s: 3, r: "Fallo", tip: "Bajar con codos", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+al+pecho+agarre+neutro" },
+      { name: "Remo Polea Baja", s: 3, r: "10", tip: "Juntar escápulas", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea+baja+tecnica" },
+      { name: "Facepulls", s: 3, r: "15", tip: "Codos altos", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=face+pulls+tecnica" },
+      { name: "Crunch en Máquina", s: 4, r: "Fallo", tip: "Espalda pegada. Si duele espalda: plancha abdominal", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=crunch+maquina+abdominal" }
+    ]},
+    { id: 407, title: "DÍA 3: Inferior B (Tracción/Medio)", focus: "Piernas & Glúteo", warmupType: "warmupLower", icon: "flame", exercises: [
+      { name: "Peso Muerto Sumo DB", s: 3, r: "8", tip: "Pies anchos", mus: "Piernas", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+sumo+mancuerna" },
+      { name: "Curl Femoral", s: 3, r: "10+10", tip: "10 controladas + 10 explosivas. Control excéntrico", mus: "Isquios", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral+maquina" },
+      { name: "Hiperextensiones", s: 3, r: "10", tip: "Foco glúteo", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hiperextensiones+gluteo" },
+      { name: "Abducción en Polea", s: 3, r: "Fallo + dropset", tip: "Cuerpo fijo", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+polea+gluteo" }
+    ]},
+    { id: 408, title: "DÍA 4: Superior B (Empuje/Estabilidad)", focus: "Pecho, Hombros & Core", warmupType: "warmupAthlos", icon: "zap", exercises: [
+      { name: "Press Banca Mancuernas", s: 3, r: "10", tip: "Retracción escapular. Superserie con flexiones al fallo", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+banca+mancuernas+tecnica", superset: true },
+      { name: "Flexiones", s: 3, r: "Fallo", tip: "Superserie con press banca", mus: "Pecho", img: "https://images.unsplash.com/photo-1608805622529-4f3cec3d7c5a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=flexiones+perfectas" },
+      { name: "Press Militar Sentada", s: 3, r: "10", tip: "Espalda apoyada", mus: "Hombros", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar+sentado+mancuernas" },
+      { name: "Remo al Mentón en Polea", s: 3, r: "10 + dropset al fallo", tip: "Agarre ancho, no subas más del pecho", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+al+menton+polea" },
+      { name: "Crunch en Máquina", s: 4, r: "Fallo", tip: "No rotar cadera. Si duele espalda: plancha abdominal", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=crunch+maquina+abdominal" },
+      { name: "Press Pallof", s: 4, r: "10", tip: "Espalda recta", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+pallof+polea" }
     ]}
   ]} },
   blanca: { username: "blanca", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Blanca Aguero", color: "from-purple-600 to-pink-500", subtitle: "PLAN DE ENTRENAMIENTO - BLANCA AGUERO (V2)", advice: "Respiración: No bloquees aire. Exhala al subir. Hombro: Sube sin dolor. Explosividad: Bajada controlada, subida rápida. Seguridad: Cerca de pared o silla. Calidad: Si dobla la espalda, serie termina.", logs: {}, notes: [], workoutData: { days: [
@@ -1148,6 +1182,11 @@ export default function App() {
   const [aiPromptText, setAiPromptText] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGeneratedRoutine, setAiGeneratedRoutine] = useState(null);
+
+  // Sync preview: ver datos del servidor antes de restaurar
+  const [showSyncPreview, setShowSyncPreview] = useState(false);
+  const [syncPreviewData, setSyncPreviewData] = useState(null);
+  const [syncPreviewLoading, setSyncPreviewLoading] = useState(false);
   const [aiError, setAiError] = useState("");
 
   const lastBackPress = useRef(0);
@@ -1223,6 +1262,9 @@ export default function App() {
   }, []);
 
   const updateUserInCloud = useCallback((userId, modifierFn) => {
+    // Pre-marcar escritura pendiente INMEDIATAMENTE (antes de que React procese setDb)
+    // Protege contra onSnapshot sobreescribiendo datos antes de que el callback de setDb se ejecute
+    pendingWritesRef.current[userId] = Date.now();
     setDb(prev => {
       const current = prev[userId] || INITIAL_DB[userId] || { workoutData: { days: [] }, logs: {}, notes: [] };
       const cloned = structuredClone(current);
@@ -1234,18 +1276,22 @@ export default function App() {
       
       if (lastAppliedUpdateRef.current[userId] !== updateKey) {
         lastAppliedUpdateRef.current[userId] = updateKey;
-        // Marcar que hay escritura pendiente para este usuario
+        // Refrescar timestamp de escritura pendiente
         pendingWritesRef.current[userId] = Date.now();
         // With Firestore persistence, setDoc queues locally offline and syncs when back online
         setIsSyncing(true);
         if (db_cloud) {
           setDoc(doc(db_cloud, COLLECTION_NAME, userId), next).then(() => {
-            // Limpiar pending write cuando el servidor confirma
-            delete pendingWritesRef.current[userId];
-            setIsSyncing(false);
+            // Grace period: mantener protección 3s contra snapshots obsoletos
+            setTimeout(() => {
+              delete pendingWritesRef.current[userId];
+              setIsSyncing(false);
+            }, 3000);
           }).catch((writeErr) => {
             err('❌ Firestore write error for', userId, ':', writeErr.message);
-            delete pendingWritesRef.current[userId];
+            setTimeout(() => {
+              delete pendingWritesRef.current[userId];
+            }, 3000);
             setIsSyncing(false);
           });
         } else {
@@ -1420,10 +1466,12 @@ export default function App() {
                 setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync missing user error:", syncErr));
                 cloud[k] = INITIAL_DB[k];
               } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
-                // Solo reparar estructura, NUNCA sobreescribir con datos por defecto de INITIAL_DB
+                // Reparar estructura local, NO escribir days vacío de vuelta a Firestore (destructivo)
                 cloud[k].workoutData = cloud[k].workoutData || {};
-                cloud[k].workoutData.days = [];
-                setDoc(doc(db_cloud, COLLECTION_NAME, k), cloud[k]).catch(syncErr => warn("Sync workout fix error:", syncErr));
+                if (!Array.isArray(cloud[k].workoutData.days)) {
+                  const d = cloud[k].workoutData.days;
+                  cloud[k].workoutData.days = (d && typeof d === 'object') ? Object.values(d) : [];
+                }
               }
             });
           }
@@ -1431,9 +1479,13 @@ export default function App() {
         // Usar functional update para respetar escrituras locales pendientes
         setDb(prev => {
           const merged = { ...cloud };
-          // Preservar datos locales de usuarios con escrituras pendientes
+          // Preservar datos locales de usuarios con escrituras pendientes o recientes
           Object.keys(pendingWritesRef.current).forEach(userId => {
-            if (prev[userId]) {
+            const age = Date.now() - pendingWritesRef.current[userId];
+            if (age > 10000) {
+              // Escritura pendiente obsoleta (>10s), limpiar
+              delete pendingWritesRef.current[userId];
+            } else if (prev[userId]) {
               merged[userId] = prev[userId];
             }
           });
@@ -1838,7 +1890,10 @@ export default function App() {
         let sanitized;
         
         // 🔐 Validated sanitization based on field type
-        if (field === 'yt') {
+        if (field === 'superset') {
+          // Boolean field — don't sanitize as text
+          sanitized = val === true || val === 'true';
+        } else if (field === 'yt') {
           sanitized = sanitizeUrl(val);
         } else if (field === 'img') {
           // Images: validate URL or allow base64 data URLs
@@ -2005,7 +2060,51 @@ export default function App() {
     }
   };
 
-  // RESTAURAR DATOS DESDE FIRESTORE (botón de emergencia para el admin)
+  // PREVISUALIZAR DATOS DEL SERVIDOR antes de restaurar
+  const fetchSyncPreview = async () => {
+    if (!db_cloud) { showError("Firestore no disponible"); return; }
+    setSyncPreviewLoading(true);
+    setSyncPreviewData(null);
+    try {
+      await enableNetwork(db_cloud);
+      const snap = await getDocs(collection(db_cloud, COLLECTION_NAME));
+      const cloud = {};
+      snap.forEach(d => { if (d.id !== '_deleted_users') cloud[d.id] = d.data(); });
+      if (Object.keys(cloud).length > 0) {
+        // Comparar local vs cloud para cada cliente
+        const comparison = {};
+        Object.keys(cloud).filter(k => k !== 'entrenador').forEach(k => {
+          const cloudDays = Array.isArray(cloud[k].workoutData?.days) ? cloud[k].workoutData.days : [];
+          const localDays = Array.isArray(db[k]?.workoutData?.days) ? db[k].workoutData.days : [];
+          const cloudLogs = Object.values(cloud[k].logs || {}).flat().length;
+          const localLogs = Object.values(db[k]?.logs || {}).flat().length;
+          comparison[k] = {
+            name: cloud[k].name || k,
+            cloudDays: cloudDays.length,
+            localDays: localDays.length,
+            cloudDayTitles: cloudDays.map(d => d.title || 'Sin título'),
+            localDayTitles: localDays.map(d => d.title || 'Sin título'),
+            cloudExercises: cloudDays.reduce((sum, d) => sum + (Array.isArray(d.exercises) ? d.exercises.length : 0), 0),
+            localExercises: localDays.reduce((sum, d) => sum + (Array.isArray(d.exercises) ? d.exercises.length : 0), 0),
+            cloudLogs,
+            localLogs,
+            hasMoreDataInCloud: cloudDays.length > localDays.length || cloudLogs > localLogs,
+            isDifferent: JSON.stringify(cloudDays) !== JSON.stringify(localDays)
+          };
+        });
+        setSyncPreviewData({ cloud, comparison });
+        setShowSyncPreview(true);
+      } else {
+        showError("No se encontraron datos en el servidor");
+      }
+    } catch (e) {
+      err('Error al consultar servidor:', e);
+      showError("Error de conexión con el servidor");
+    }
+    setSyncPreviewLoading(false);
+  };
+
+  // RESTAURAR DATOS DESDE FIRESTORE (confirmar después de preview)
   const forceReloadFromServer = async () => {
     if (!db_cloud) {
       showError("Firestore no disponible");
@@ -2033,6 +2132,8 @@ export default function App() {
       showError("Error de conexión con el servidor");
     }
     setIsForceReloading(false);
+    setShowSyncPreview(false);
+    setSyncPreviewData(null);
   };
 
   const addLogRecord = useCallback((exName, weight, reps) => {
@@ -2319,9 +2420,8 @@ Reglas:
       }
       return { ...u, workoutData: { ...u.workoutData, days } };
     });
-    // Persistir imagen custom para ejercicios predefinidos (usar functional update para evitar stale closure)
-    const isPredefined = [...EJERCICIOS_PREDEFINIDOS, ...ATHLOS_FORGE_EXERCISES].some(e => e.name === exName);
-    if (isPredefined && (loggedInUser === 'entrenador' || loggedInUser === 'coach')) {
+    // Persistir imagen custom para TODOS los ejercicios (predefinidos y personalizados)
+    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
       setCustomExerciseImages(prev => {
         const updated = { ...prev, [exName]: newImgBase64 };
         localStorage.setItem('athlos_custom_exercise_images', JSON.stringify(updated));
@@ -2563,7 +2663,7 @@ Reglas:
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500"><Users size={14} className="text-amber-500" /> Clientes ({Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').length})</div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase">
-                    <button onClick={forceReloadFromServer} disabled={isForceReloading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={isForceReloading ? 'animate-spin' : ''}/> {isForceReloading ? '...' : 'Sync'}</button>
+                    <button onClick={fetchSyncPreview} disabled={isForceReloading || syncPreviewLoading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={(isForceReloading || syncPreviewLoading) ? 'animate-spin' : ''}/> {syncPreviewLoading ? '...' : 'Sync'}</button>
                     <button onClick={() => setShowAddClientModal(true)} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
                   </div>
                 </div>
@@ -2809,7 +2909,7 @@ Reglas:
                                     let idx = 0;
                                     while (idx < exercises.length) {
                                       const ex = exercises[idx];
-                                      const isSuperset = ex.superset && idx < exercises.length - 1;
+                                      const isSuperset = (ex.superset === true || ex.superset === 'true') && idx < exercises.length - 1;
                                       if (isSuperset) {
                                         const ex2 = exercises[idx + 1];
                                         rendered.push(
@@ -2837,7 +2937,7 @@ Reglas:
                                             <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg">
                                               {renderAdminExerciseCard(ex, idx, exercises)}
                                             </div>
-                                            {idx < exercises.length - 1 && !exercises[idx + 1]?.superset && !(idx > 0 && exercises[idx - 1]?.superset) && (
+                                            {idx < exercises.length - 1 && !(exercises[idx + 1]?.superset === true || exercises[idx + 1]?.superset === 'true') && !(idx > 0 && (exercises[idx - 1]?.superset === true || exercises[idx - 1]?.superset === 'true')) && (
                                               <button onClick={() => modifyExerciseData(editingDayId, idx, 'superset', true)} className="w-full mt-2 py-1.5 text-[9px] font-bold text-zinc-600 hover:text-purple-400 uppercase flex items-center justify-center gap-1 transition-colors"><Zap size={10}/> Hacer superserie con siguiente</button>
                                             )}
                                           </div>
@@ -3023,7 +3123,7 @@ Reglas:
 
                                       <div className="flex gap-2">
                                         <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); showSuccess("Ejercicio agregado ✓"); } }} className="flex-1 bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 flex items-center justify-center gap-1"><Plus size={14}/> Añadir</button>
-                                        <button onClick={() => { if(newEx.name?.trim()) { saveCustomExercise(newEx); updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); } }} className="bg-purple-500 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase active:scale-95 flex items-center gap-1" title="Añadir y guardar en tu biblioteca">📚 Guardar</button>
+                                        <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); saveCustomExercise(newEx); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); } }} className="bg-purple-500 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase active:scale-95 flex items-center gap-1" title="Añadir y guardar en tu biblioteca">📚 Guardar</button>
                                       </div>
                                       <p className="text-[8px] text-zinc-600 text-center">📚 = Añadir al día + guardar en tu biblioteca para reusar</p>
                                     </div>
@@ -3116,7 +3216,7 @@ Reglas:
                           <CheckCircle2 size={12} className="text-white"/>
                         </div>
                       )}
-                    </div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3>{completedToday && <p className="text-[8px] font-bold text-emerald-500 mt-0.5">✓ Hecho hoy</p>}</div></div>
+                    </div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3>{completedToday && <p className="text-[8px] font-bold text-emerald-500 mt-0.5">✓ Hecho hoy</p>}{isAdminEditing && <p className="text-[8px] font-bold text-cyan-500/70 mt-0.5 flex items-center gap-1"><Database size={8}/> Guardado en servidor</p>}</div></div>
                   <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </button>
               );})}
@@ -3182,7 +3282,7 @@ Reglas:
               while (i < filtered.length) {
                 const ex = filtered[i];
                 const originalIdx = allExercises.indexOf(ex);
-                if (ex.superset && i < filtered.length - 1) {
+                if ((ex.superset === true || ex.superset === 'true') && i < filtered.length - 1) {
                   const nextEx = filtered[i + 1];
                   const nextOriginalIdx = allExercises.indexOf(nextEx);
                   items.push(
@@ -3391,6 +3491,67 @@ Reglas:
                 <button onClick={()=>{setShowDeleteConfirmModal(false); setClientToDelete(null);}} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 rounded-xl text-[10px] uppercase">CANCELAR</button>
               </div>
            </div>
+        </div>
+      )}
+
+      {/* Modal: Sync Preview - Ver datos del servidor antes de restaurar */}
+      {showSyncPreview && syncPreviewData && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-t-[2rem] sm:rounded-[2rem] p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-emerald-500 font-black uppercase text-sm flex items-center gap-2"><Database size={18}/> Datos en Servidor</h3>
+              <button onClick={() => { setShowSyncPreview(false); setSyncPreviewData(null); }}><X size={20} className="text-zinc-500"/></button>
+            </div>
+            <p className="text-zinc-400 text-[10px]">Comparación de datos locales vs servidor. Restaurar reemplazará TODOS los datos locales.</p>
+            <div className="space-y-3">
+              {Object.entries(syncPreviewData.comparison).map(([id, c]) => (
+                <div key={id} className={`p-4 rounded-xl border ${c.isDifferent ? 'border-amber-500/30 bg-amber-500/5' : 'border-zinc-800 bg-zinc-800/30'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-white font-black text-sm">{c.name}</p>
+                    {c.isDifferent ? (
+                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">Diferente</span>
+                    ) : (
+                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">Igual</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[9px]">
+                    <div className="bg-zinc-800/50 rounded-lg p-2">
+                      <p className="text-zinc-500 font-bold uppercase mb-1">Local</p>
+                      <p className="text-white font-bold">{c.localDays} días · {c.localExercises} ejercicios</p>
+                      <p className="text-zinc-500">{c.localLogs} registros</p>
+                      {c.localDayTitles.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {c.localDayTitles.map((t, i) => <p key={i} className="text-zinc-400 truncate text-[8px]">• {t}</p>)}
+                        </div>
+                      )}
+                    </div>
+                    <div className={`rounded-lg p-2 ${c.hasMoreDataInCloud ? 'bg-emerald-500/10' : 'bg-zinc-800/50'}`}>
+                      <p className="text-zinc-500 font-bold uppercase mb-1">☁️ Servidor</p>
+                      <p className={`font-bold ${c.hasMoreDataInCloud ? 'text-emerald-400' : 'text-white'}`}>{c.cloudDays} días · {c.cloudExercises} ejercicios</p>
+                      <p className="text-zinc-500">{c.cloudLogs} registros</p>
+                      {c.cloudDayTitles.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {c.cloudDayTitles.map((t, i) => <p key={i} className="text-zinc-400 truncate text-[8px]">• {t}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {c.hasMoreDataInCloud && (
+                    <p className="text-emerald-400 text-[8px] font-bold mt-2">✓ El servidor tiene más datos — restaurar podría recuperar información</p>
+                  )}
+                  {!c.hasMoreDataInCloud && c.isDifferent && c.localDays > c.cloudDays && (
+                    <p className="text-amber-400 text-[8px] font-bold mt-2">⚠️ Local tiene más días — restaurar perdería datos locales</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={forceReloadFromServer} disabled={isForceReloading} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50">
+                {isForceReloading ? <><Loader2 className="animate-spin" size={14}/> Restaurando...</> : <><RefreshCw size={14}/> Restaurar del Servidor</>}
+              </button>
+              <button onClick={() => { setShowSyncPreview(false); setSyncPreviewData(null); }} className="bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase">Cancelar</button>
+            </div>
+          </div>
         </div>
       )}
 

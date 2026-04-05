@@ -28,10 +28,10 @@ export const AthlosSplashScreen = () => {
           transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        <div className="relative mx-auto mb-6 w-20 h-20">
+        <div className="relative mx-auto mb-6 w-24 h-24">
           <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-xl animate-pulse" />
-          <div className="relative flex items-center justify-center w-20 h-20 bg-amber-500/10 rounded-full border border-amber-500/30">
-            <span className="text-4xl">⚡</span>
+          <div className="relative flex items-center justify-center w-24 h-24 rounded-full overflow-hidden">
+            <img src="/athlos-logo.png" alt="Athlos" className="w-full h-full object-contain" />
           </div>
         </div>
         <h1 className="text-5xl font-black text-amber-500 tracking-tight">ATHLOS</h1>
