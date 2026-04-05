@@ -79,7 +79,7 @@ const firebaseConfig = {
 const APP_VERSION = "2.5.0";
 const COLLECTION_NAME = "athlos_clients";
 // Migración: actualizar usuarios cuya INITIAL_DB ha cambiado (one-shot por versión)
-const DATA_MIGRATION_VERSION = "2.5.0";
+const DATA_MIGRATION_VERSION = "2.5.1";
 const __DEV__ = import.meta.env.MODE === 'development';
 const log = (...args) => { if (__DEV__) console.log(...args); };
 const warn = (...args) => { if (__DEV__) console.warn(...args); };
@@ -423,31 +423,36 @@ const ATHLOS_FORGE_EXERCISES = [
 ];
 
 const RUTINA_TAMARA_OFICIAL = [
-  { id: 101, title: "DÍA 1: Glúteo Máximo", focus: "Fuerza", warmupType: "warmupAthlos", exercises: [
-    { name: "Hip Thrust", s: 4, r: "8-10", tip: "Pausa 2\" arriba.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=zsRrjH2z0N8" },
-    { name: "Peso Muerto Rumano", s: 3, r: "10", tip: "Bajada lenta.", mus: "Isquios", img: "https://images.unsplash.com/photo-1613210915490-b0c0e1f30e4f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=jEy_czNkF2o" },
-    { name: "Sentadilla Búlgara", s: 3, r: "12", tip: "Rodilla atrás.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1535544546519-1563b80b5e4e?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=2z7xSJUzVII" }
+  { id: 101, title: "DÍA 1: Glúteo Máximo & Cargas", focus: "Tensión Mecánica", warmupType: "warmupLower", icon: "flame", exercises: [
+    { name: "Hip Thrust", s: 4, r: "8-10", tip: "Pausa de 2\" arriba. El ejercicio más importante.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust+tecnica+gluteo" },
+    { name: "Peso Muerto Rumano (DB)", s: 3, r: "10", tip: "Controla la bajada (3 seg). Siente el estiramiento.", mus: "Isquios", img: "https://images.unsplash.com/photo-1633626773746-25284de532af?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano+mancuernas" },
+    { name: "Hiperextensiones", s: 3, r: "12", tip: "Barbilla al pecho, espalda alta curva para aislar glúteo.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hiperextensiones+gluteo" },
+    { name: "Abducción en Máquina", s: 3, r: "15", tip: "Sin descanso o muy corto (30\"). Bombeo final.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=abduccion+maquina+gluteo" }
   ]},
-  { id: 102, title: "DÍA 2: Glúteo Volumen", focus: "Hipertrofia", warmupType: "warmupLower", exercises: [
-    { name: "Sentadilla", s: 4, r: "10-12", tip: "Profundidad máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
-    { name: "Prensa Pierna", s: 3, r: "12-15", tip: "Rango completo.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1600673748286-d24e97f884f7?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=0q-FGrPCEf8" },
-    { name: "Máquina Glúteo", s: 3, r: "15", tip: "Contracción máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1608805755822-13715af581f7?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=gvdJHG9DL58" }
+  { id: 102, title: "DÍA 2: Torso & Postura Anti-Oficina", focus: "Espalda & Hombros", warmupType: "warmupAthlos", icon: "shield", exercises: [
+    { name: "Jalón al Pecho Agarre Neutro", s: 3, r: "12", tip: "Hombros abajo, no tires con el cuello.", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=jalon+al+pecho+agarre+neutro" },
+    { name: "Remo en Polea Baja", s: 3, r: "12", tip: "Aprieta las escápulas atrás como si sujetaras un boli.", mus: "Espalda", img: "https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=remo+polea+baja+tecnica" },
+    { name: "Press Militar (DB)", s: 3, r: "12", tip: "Estabilidad de core. Fuerza para tus artes marciales.", mus: "Hombros", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+militar+mancuernas+sentada" },
+    { name: "Facepulls en Polea", s: 3, r: "20", tip: "Codos altos. Clave para corregir la postura.", mus: "Hombros", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=face+pulls+polea+tecnica" }
   ]},
-  { id: 103, title: "DÍA 3: Postura & Core", focus: "Estabilidad", warmupType: "warmupUpper", exercises: [
-    { name: "Remo a Peso", s: 3, r: "10-12", tip: "Retrae escápula.", mus: "Espalda", img: "https://images.unsplash.com/photo-1525338419e00-a06b8ecf7a90?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=4L9N_AvdZMA" },
-    { name: "Dead Bug", s: 3, r: "12", tip: "Abdomen contraído.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=JB2oyqG50KI" },
-    { name: "Face Pulls", s: 3, r: "15", tip: "Squeeze posterior.", mus: "Hombro", img: "https://images.unsplash.com/photo-1609899753861-25c1a3a74324?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=rep-qVOkqgk" }
+  { id: 103, title: "DÍA 3: Glúteo Unilateral & Estabilidad", focus: "Asimetrías & Firmeza", warmupType: "warmupLower", icon: "target", exercises: [
+    { name: "Zancada Búlgara", s: 3, r: "10", tip: "Torso inclinado adelante. Rodilla estable.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=zancada+bulgara+gluteo" },
+    { name: "Step-Up (Subida cajón)", s: 3, r: "12", tip: "No te impulses con el pie de abajo. Control en la bajada.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1595910519046-61622f7a19cd?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=step+up+cajon+gluteo" },
+    { name: "Curl Femoral Sentado", s: 3, r: "15", tip: "Aprieta fuerte abajo.", mus: "Isquios", img: "https://images.unsplash.com/photo-1584735175097-24340077ad18?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=curl+femoral+sentado" },
+    { name: "Patada de Glúteo (Polea)", s: 3, r: "15", tip: "Mantén el abdomen duro. No arquees la espalda.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=patada+gluteo+polea" }
   ]},
-  { id: 104, title: "DÍA 4: Glúteo Densidad", focus: "Fuerza Relativa", warmupType: "warmupAthlos", exercises: [
-    { name: "Peso Muerto Clásico", s: 3, r: "5-6", tip: "Carga máxima.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" },
-    { name: "Step Up Pesado", s: 3, r: "6-8", tip: "Impulsa arriba.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1595910519046-61622f7a19cd?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=lqKZZuApVI0" },
-    { name: "Puente Cadera", s: 3, r: "15", tip: "Pausa 1\" arriba.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=wPM8ic32RhI" }
+  { id: 104, title: "DÍA 4: Power Leg & Core", focus: "Fuerza & Faja Abdominal", warmupType: "warmupAthlos", icon: "zap", exercises: [
+    { name: "Prensa Pies Altos", s: 3, r: "8-10", tip: "Pies arriba para más glúteo. O sentadilla.", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+pies+altos+gluteo" },
+    { name: "Hiperextensiones", s: 3, r: "12", tip: "Foco total en la mordida del glúteo.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hiperextensiones+gluteo" },
+    { name: "Elevación de Piernas", s: 3, r: "12-15", tip: "En banco o colgada. Controla que no haya balanceo.", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=elevacion+de+piernas+abdominales" },
+    { name: "Rueda Abdominal", s: 3, r: "10-12", tip: "Mantén la espalda protegida (no la hundas).", mus: "Core", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rueda+abdominal+tecnica" },
+    { name: "Plancha (Plank)", s: 3, r: "60s", tip: "Máxima tensión global.", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=plancha+abdominal+tecnica" }
   ]}
 ];
 
 const INITIAL_DB = {
   entrenador: { username: "coach", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
-  tamara: { username: "tamara", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Glúteo & Postura", advice: "Estira cada hora.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
+  tamara: { username: "tamara", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Plan Recomposición: Hipertrofia Glúteo + Salud Lumbar", advice: "Si las 10 reps salen fáciles, sube el peso. Cada hora sentada levántate 30s a estirar psoas. Proteína: 1.8-2g por kilo. Los días de estrés busca calidad, no récords.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
   pivon: { username: "pivon", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero y espalda sana", advice: "Técnica perfecta por tu escoliosis.", logs: {}, notes: [], workoutData: { days: [
     { id: 201, title: "Día 1: Glúteos e Isquios", focus: "Fuerza", warmupType: "warmupLower", isCircuit: false, exercises: [
       { name: "Hip Thrust", s: 4, r: "6-8", tip: "Bajada 3s.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=tecnica+hip+thrust" },
