@@ -76,8 +76,10 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const APP_VERSION = "2.4.4";
+const APP_VERSION = "2.5.0";
 const COLLECTION_NAME = "athlos_clients";
+// Migración: actualizar usuarios cuya INITIAL_DB ha cambiado (one-shot por versión)
+const DATA_MIGRATION_VERSION = "2.5.0";
 const __DEV__ = import.meta.env.MODE === 'development';
 const log = (...args) => { if (__DEV__) console.log(...args); };
 const warn = (...args) => { if (__DEV__) console.warn(...args); };
@@ -1474,6 +1476,25 @@ export default function App() {
                 }
               }
             });
+
+            // Migración one-shot: actualizar datos de INITIAL_DB si la versión cambió
+            const migKey = `athlos_migration_${DATA_MIGRATION_VERSION}`;
+            if (!localStorage.getItem(migKey)) {
+              localStorage.setItem(migKey, Date.now().toString());
+              Object.keys(INITIAL_DB).forEach(k => {
+                if (deletedList.includes(k) || !cloud[k]) return;
+                const cloudDays = Array.isArray(cloud[k].workoutData?.days) ? cloud[k].workoutData.days : [];
+                const initialDays = Array.isArray(INITIAL_DB[k].workoutData?.days) ? INITIAL_DB[k].workoutData.days : [];
+                // Solo migrar si los datos del servidor tienen MENOS días que INITIAL_DB
+                // (indica que el usuario nunca personalizó más allá del default viejo)
+                if (initialDays.length > cloudDays.length) {
+                  const updated = { ...cloud[k], workoutData: INITIAL_DB[k].workoutData, subtitle: INITIAL_DB[k].subtitle, advice: INITIAL_DB[k].advice };
+                  setDoc(doc(db_cloud, COLLECTION_NAME, k), updated).catch(syncErr => warn("Migration error:", syncErr));
+                  cloud[k] = updated;
+                  log(`📦 Migrado ${k}: ${cloudDays.length} → ${initialDays.length} días`);
+                }
+              });
+            }
           }
         }
         // Usar functional update para respetar escrituras locales pendientes
