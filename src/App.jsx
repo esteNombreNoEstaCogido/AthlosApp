@@ -20,6 +20,7 @@ import { ExerciseImageManager } from "./components/ExerciseImageManager.jsx";
 import { ProgressTracker } from "./components/ProgressTracker.jsx";
 import { PhotoComparator } from "./components/PhotoComparator.jsx";
 import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
+import html2pdf from "html2pdf.js/dist/html2pdf.bundle.min.js";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
 import { 
@@ -250,12 +251,20 @@ const generatePDFReport = async (client, days) => {
   document.body.appendChild(container);
   
   try {
-    const html2pdfModule = await import("html2pdf.js/dist/html2pdf.bundle.min.js");
-    const html2pdf = html2pdfModule.default || html2pdfModule;
-    await html2pdf().set(opt).from(container).save();
+    const filename = `${client.name}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`;
+    const blob = await html2pdf().set(opt).from(container).outputPdf('blob');
+    // Descargar manualmente con <a> (más compatible con Capacitor/WebViews)
+    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
   } catch (e) {
     console.error("Error generating PDF:", e);
-    alert("Error al generar el PDF. Inténtalo de nuevo.");
+    alert("Error al generar el PDF: " + (e.message || e));
   } finally {
     document.body.removeChild(container);
   }
@@ -1537,7 +1546,25 @@ export default function App() {
       // Esto reduce lecturas de N docs × cada cambio → 2 docs × cada cambio
       const unsubUser = onSnapshot(doc(db_cloud, COLLECTION_NAME, loggedInUser), (snap) => {
         if (snap.exists()) {
-          setDb(prev => ({ ...prev, [loggedInUser]: snap.data() }));
+          const userData = snap.data();
+          // Migración client-side: si INITIAL_DB tiene datos nuevos para este usuario, actualizar
+          const migKeyClient = `athlos_migration_client_${DATA_MIGRATION_VERSION}_${loggedInUser}`;
+          if (!localStorage.getItem(migKeyClient) && INITIAL_DB[loggedInUser] && !snap.metadata.fromCache) {
+            localStorage.setItem(migKeyClient, Date.now().toString());
+            const cloudDays = Array.isArray(userData.workoutData?.days) ? userData.workoutData.days : [];
+            const initialDays = Array.isArray(INITIAL_DB[loggedInUser].workoutData?.days) ? INITIAL_DB[loggedInUser].workoutData.days : [];
+            const cloudTitles = cloudDays.map(d => d.title).sort().join('|');
+            const initialTitles = initialDays.map(d => d.title).sort().join('|');
+            if (initialDays.length > cloudDays.length || (initialDays.length >= cloudDays.length && cloudTitles !== initialTitles)) {
+              const updated = { ...userData, workoutData: INITIAL_DB[loggedInUser].workoutData, subtitle: INITIAL_DB[loggedInUser].subtitle, advice: INITIAL_DB[loggedInUser].advice };
+              setDoc(doc(db_cloud, COLLECTION_NAME, loggedInUser), updated).catch(syncErr => warn("Client migration error:", syncErr));
+              setDb(prev => ({ ...prev, [loggedInUser]: updated }));
+              setDataLoaded(true);
+              log(`📦 Migración cliente ${loggedInUser}: títulos actualizados`);
+              return;
+            }
+          }
+          setDb(prev => ({ ...prev, [loggedInUser]: userData }));
         } else {
           // User doc doesn't exist in Firestore, check INITIAL_DB
           const initial = INITIAL_DB[loggedInUser];
@@ -2481,6 +2508,36 @@ Reglas:
     }));
   }, [currentClientId, updateUserInCloud]);
 
+  // Avatar upload: compress image to base64 and save
+  const handleAvatarUpload = useCallback((targetUserId) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) { alert('Imagen demasiado grande (máx 10MB)'); return; }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 256;
+          let w = img.width, h = img.height;
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; } else { w = Math.round(w * MAX / h); h = MAX; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const base64 = canvas.toDataURL('image/jpeg', 0.8);
+          updateUserInCloud(targetUserId, u => ({ ...u, avatar: base64 }));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }, [updateUserInCloud]);
+
   const runCreateProfile = async () => {
     if (isCreatingProfile) return;
     const name = sanitizeInput(newClient.name).trim();
@@ -2679,8 +2736,16 @@ Reglas:
                    </>
                  ) : (
                    <>
-                     <h1 className="text-3xl font-black uppercase tracking-tight">{String(client.name || "Cliente")}</h1>
-                     <p className="text-sm font-medium italic opacity-80">{String(client.subtitle || "")}</p>
+                     <div className="flex items-center gap-4">
+                       <button onClick={() => handleAvatarUpload(currentClientId)} className="relative w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0 group active:scale-95 transition-transform">
+                         {client.avatar ? <img src={client.avatar} alt="" className="w-full h-full object-cover" /> : <User size={24} className="text-white/60" />}
+                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={14} className="text-white" /></div>
+                       </button>
+                       <div>
+                         <h1 className="text-3xl font-black uppercase tracking-tight">{String(client.name || "Cliente")}</h1>
+                         <p className="text-sm font-medium italic opacity-80">{String(client.subtitle || "")}</p>
+                       </div>
+                     </div>
                    </>
                  )}
               </div>
@@ -2710,8 +2775,8 @@ Reglas:
                     return (
                       <button key={id} onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }}
                         className={`relative p-4 rounded-2xl border text-left transition-all active:scale-[0.97] ${isSelected ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-800'}`}>
-                        <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${String(c.color || 'from-blue-600 to-indigo-500')} flex items-center justify-center text-white text-xs font-black mb-2`}>
-                          {String(c.name || id).charAt(0).toUpperCase()}
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${String(c.color || 'from-blue-600 to-indigo-500')} flex items-center justify-center text-white text-xs font-black mb-2 overflow-hidden`}>
+                          {c.avatar ? <img src={c.avatar} alt="" className="w-full h-full object-cover" /> : String(c.name || id).charAt(0).toUpperCase()}
                         </div>
                         <p className={`text-sm font-black truncate ${isSelected ? 'text-amber-500' : 'text-white'}`}>{String(c.name || id)}</p>
                         <p className="text-[9px] text-zinc-500 truncate mt-0.5">{String(c.subtitle || '—')}</p>
@@ -2734,6 +2799,13 @@ Reglas:
                         <button onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="bg-red-500/30 hover:bg-red-500/40 text-red-200 p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Trash2 size={14}/> Eliminar</button>
                       </div>
                       <div className="space-y-6">
+                        <div className="flex items-center gap-4 mb-2">
+                          <button onClick={() => handleAvatarUpload(editingClientId)} className="relative w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0 group active:scale-95 transition-transform">
+                            {db[editingClientId].avatar ? <img src={db[editingClientId].avatar} alt="" className="w-full h-full object-cover" /> : <User size={28} className="text-white/60" />}
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={16} className="text-white" /></div>
+                          </button>
+                          <p className="text-[9px] text-white/50 font-bold uppercase">Cambiar avatar</p>
+                        </div>
                         <div>
                           <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Nombre</label>
                           <input key={`name-${editingClientId}`} defaultValue={String(db[editingClientId].name || "")} maxLength="50" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, name: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-black text-lg outline-none" />
