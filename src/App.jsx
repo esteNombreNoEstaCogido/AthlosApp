@@ -79,7 +79,7 @@ const firebaseConfig = {
 const APP_VERSION = "2.5.0";
 const COLLECTION_NAME = "athlos_clients";
 // Migración: actualizar usuarios cuya INITIAL_DB ha cambiado (one-shot por versión)
-const DATA_MIGRATION_VERSION = "2.5.1";
+const DATA_MIGRATION_VERSION = "2.5.2";
 const __DEV__ = import.meta.env.MODE === 'development';
 const log = (...args) => { if (__DEV__) console.log(...args); };
 const warn = (...args) => { if (__DEV__) console.warn(...args); };
@@ -1490,13 +1490,21 @@ export default function App() {
                 if (deletedList.includes(k) || !cloud[k]) return;
                 const cloudDays = Array.isArray(cloud[k].workoutData?.days) ? cloud[k].workoutData.days : [];
                 const initialDays = Array.isArray(INITIAL_DB[k].workoutData?.days) ? INITIAL_DB[k].workoutData.days : [];
-                // Solo migrar si los datos del servidor tienen MENOS días que INITIAL_DB
-                // (indica que el usuario nunca personalizó más allá del default viejo)
-                if (initialDays.length > cloudDays.length) {
-                  const updated = { ...cloud[k], workoutData: INITIAL_DB[k].workoutData, subtitle: INITIAL_DB[k].subtitle, advice: INITIAL_DB[k].advice };
+                // Comparar contenido: migrar si INITIAL_DB tiene más días O si los títulos de los días cambiaron
+                const cloudTitles = cloudDays.map(d => d.title).sort().join('|');
+                const initialTitles = initialDays.map(d => d.title).sort().join('|');
+                const needsMigration = initialDays.length > cloudDays.length || (initialDays.length >= cloudDays.length && cloudTitles !== initialTitles);
+                if (needsMigration) {
+                  // Preservar datos del usuario: logs, notes, userStats, color, preferredPaletteId, etc.
+                  const updated = {
+                    ...cloud[k],
+                    workoutData: INITIAL_DB[k].workoutData,
+                    subtitle: INITIAL_DB[k].subtitle,
+                    advice: INITIAL_DB[k].advice
+                  };
                   setDoc(doc(db_cloud, COLLECTION_NAME, k), updated).catch(syncErr => warn("Migration error:", syncErr));
                   cloud[k] = updated;
-                  log(`📦 Migrado ${k}: ${cloudDays.length} → ${initialDays.length} días`);
+                  log(`📦 Migrado ${k}: ${cloudDays.length} días → ${initialDays.length} días (títulos cambiados)`);
                 }
               });
             }
