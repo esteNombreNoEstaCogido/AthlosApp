@@ -51,6 +51,18 @@ const UserSchema = {
       type: 'string',
       maxLength: 500,
     },
+    questionnaire: {
+      type: 'object',
+    },
+    questionnaireRequired: {
+      type: 'boolean',
+    },
+    questionnaireSubmittedAt: {
+      type: 'string',
+    },
+    questionnaireUpdatedAt: {
+      type: 'string',
+    },
     logs: {
       type: 'object',
     },

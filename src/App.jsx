@@ -12,6 +12,7 @@ import {
 } from "./security/tokenManager.js";
 import { AthlosSplashScreen } from "./components/SplashScreen.jsx";
 import { AthlosBrandHeader } from "./components/AthlosBrandHeader.jsx";
+import { ClientQuestionnaire } from "./components/ClientQuestionnaire.jsx";
 import { ColorPalettePicker } from "./components/ColorPalettePicker.jsx";
 import { BackButtonExitHandler } from "./components/BackButtonExitHandler.jsx";
 import { Toast, useToast } from "./components/Toast.jsx";
@@ -158,90 +159,77 @@ const callGeminiAPI = async (prompt) => {
 // ✅ Secure password functions imported from passwordManager.js
 // hashPassword, validatePassword are now bcryptjs-backed
 
-const generatePDFReport = async (client, days) => {
+const generatePDFReport = async (client, days = []) => {
   const esc = escapeHtml;
-  const fallbackImg = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400';
-  const html = `
-    <div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; background: #ffffff; color: #1a1a1a;">
-      <!-- Header -->
-      <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #f59e0b;">
-        <h1 style="margin: 0 0 4px 0; font-size: 26px; color: #111; letter-spacing: 2px;">ATHLOS</h1>
-        <p style="margin: 0; font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 4px;">Plan de Entrenamiento Personal</p>
-      </div>
+  const safeClient = client || {};
+  const safeDays = Array.isArray(days) ? days : [];
+  const rows = safeDays.flatMap((day, dayIdx) => (Array.isArray(day.exercises) ? day.exercises : []).map((ex, exIdx) => ({
+    day: String(day.title || `Día ${dayIdx + 1}`),
+    focus: String(day.focus || 'General'),
+    exercise: String(ex.name || `Ejercicio ${exIdx + 1}`),
+    series: String(ex.s || 3),
+    reps: String(ex.r || '12'),
+    tip: String(ex.tip || '—')
+  })));
 
-      <!-- Client Info -->
-      <div style="background: #fafafa; border-radius: 10px; padding: 16px 20px; margin-bottom: 28px; border: 1px solid #eee;">
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 24px; background: #ffffff; color: #111111;">
+      <div style="text-align: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 3px solid #f59e0b;">
+        <h1 style="margin: 0 0 4px 0; font-size: 22px; letter-spacing: 2px;">ATHLOS</h1>
+        <p style="margin: 0; font-size: 10px; color: #999999; text-transform: uppercase; letter-spacing: 3px;">Plan de Entrenamiento Personal</p>
+      </div>
+      <div style="background: #fafafa; border: 1px solid #eeeeee; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;">
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
-            <td style="padding: 4px 0;"><strong style="color: #333;">Cliente:</strong> <span style="color: #555;">${esc(client.name)}</span></td>
-            <td style="padding: 4px 0; text-align: right;"><strong style="color: #333;">Fecha:</strong> <span style="color: #555;">${new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</span></td>
+            <td style="padding: 3px 0;"><strong>Cliente:</strong> ${esc(String(safeClient.name || 'Cliente'))}</td>
+            <td style="padding: 3px 0; text-align: right;"><strong>Fecha:</strong> ${esc(new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }))}</td>
           </tr>
           <tr>
-            <td style="padding: 4px 0;"><strong style="color: #333;">Programa:</strong> <span style="color: #555;">${esc(client.subtitle || 'General')}</span></td>
-            <td style="padding: 4px 0; text-align: right;"><strong style="color: #333;">Días:</strong> <span style="color: #555;">${days.length}</span></td>
+            <td style="padding: 3px 0;"><strong>Programa:</strong> ${esc(String(safeClient.subtitle || 'General'))}</td>
+            <td style="padding: 3px 0; text-align: right;"><strong>Días:</strong> ${esc(String(safeDays.length))}</td>
           </tr>
         </table>
       </div>
-
-      ${days.map((day, dayIdx) => `
-        <!-- Day ${dayIdx + 1} -->
-        <div style="margin-bottom: 24px; page-break-inside: avoid;">
-          <div style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 12px 18px; border-radius: 10px 10px 0 0;">
-            <h2 style="margin: 0; font-size: 15px; font-weight: 800; text-transform: uppercase;">${esc(day.title)}</h2>
-            <p style="margin: 2px 0 0 0; font-size: 11px; opacity: 0.9;">${esc(day.focus || 'General')}</p>
-          </div>
-          <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e5e5; border-top: none;">
-            <thead>
-              <tr style="background: #f9f9f9;">
-                <th style="padding: 8px 10px; text-align: left; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee; width: 60px;">Imagen</th>
-                <th style="padding: 8px 10px; text-align: left; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee;">Ejercicio</th>
-                <th style="padding: 8px 10px; text-align: center; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee; width: 55px;">Series</th>
-                <th style="padding: 8px 10px; text-align: center; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee; width: 65px;">Reps</th>
-                <th style="padding: 8px 10px; text-align: left; font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #eee;">Consejo</th>
+      <div style="margin-bottom: 16px;">
+        <h2 style="margin: 0 0 8px 0; font-size: 14px; color: #111111;">Tabla del cliente</h2>
+        <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #e5e5e5;">
+          <thead>
+            <tr style="background: #f9f9f9;">
+              <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid #eeeeee;">Día</th>
+              <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid #eeeeee;">Ejercicio</th>
+              <th style="padding: 6px 8px; text-align: center; border-bottom: 1px solid #eeeeee;">Series</th>
+              <th style="padding: 6px 8px; text-align: center; border-bottom: 1px solid #eeeeee;">Reps</th>
+              <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid #eeeeee;">Consejo</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((row) => `
+              <tr style="border-bottom: 1px solid #f0f0f0;">
+                <td style="padding: 6px 8px; vertical-align: top;"><div>${esc(row.day)}</div><div style="font-size: 9px; color: #999999;">${esc(row.focus)}</div></td>
+                <td style="padding: 6px 8px; vertical-align: top;">${esc(row.exercise)}</td>
+                <td style="padding: 6px 8px; text-align: center; vertical-align: top; color: #f59e0b; font-weight: 700;">${esc(row.series)}</td>
+                <td style="padding: 6px 8px; text-align: center; vertical-align: top;">${esc(row.reps)}</td>
+                <td style="padding: 6px 8px; vertical-align: top; color: #666666;">${esc(row.tip)}</td>
               </tr>
-            </thead>
-            <tbody>
-              ${(day.exercises || []).map((ex, i) => `
-                <tr style="border-bottom: 1px solid #f0f0f0; ${i % 2 === 1 ? 'background: #fafafa;' : ''}">
-                  <td style="padding: 8px 10px; vertical-align: middle;">
-                    <img src="${esc(ex.img || fallbackImg)}" alt="" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px; display: block;" crossorigin="anonymous" />
-                  </td>
-                  <td style="padding: 8px 10px; vertical-align: middle;">
-                    <div style="font-size: 12px; font-weight: 700; color: #222;">${esc(ex.name)}</div>
-                    <div style="font-size: 9px; color: #999; margin-top: 2px;">${esc(ex.mus || '')}</div>
-                  </td>
-                  <td style="padding: 8px 10px; text-align: center; vertical-align: middle; font-size: 16px; font-weight: 800; color: #f59e0b;">${esc(String(ex.s || 3))}</td>
-                  <td style="padding: 8px 10px; text-align: center; vertical-align: middle; font-size: 14px; font-weight: 700; color: #333;">${esc(String(ex.r || '12'))}</td>
-                  <td style="padding: 8px 10px; vertical-align: middle; font-size: 10px; color: #666; font-style: italic; max-width: 160px;">${ex.tip ? esc(ex.tip) : '<span style="color:#ccc;">—</span>'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      `).join('')}
-
-      <!-- Coach Advice -->
-      <div style="margin-top: 20px; padding: 16px 20px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; page-break-inside: avoid;">
-        <p style="margin: 0; font-size: 11px; color: #92400e;"><strong>💡 Consejo del Coach:</strong> ${esc(client.advice || 'Mantén la consistencia y disfruta el proceso.')}</p>
+            `).join('') : '<tr><td colspan="5" style="padding: 8px; color: #999999;">No hay datos para exportar.</td></tr>'}
+          </tbody>
+        </table>
       </div>
-
-      <!-- Footer -->
-      <div style="text-align: center; margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee;">
-        <p style="margin: 0; font-size: 9px; color: #bbb; letter-spacing: 2px;">ATHLOS — ENTRENAMIENTO PERSONAL</p>
+      <div style="margin-top: 18px; padding: 12px 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; page-break-inside: avoid;">
+        <p style="margin: 0; font-size: 10px; color: #92400e;"><strong>💡 Consejo del Coach:</strong> ${esc(String(safeClient.advice || 'Mantén la consistencia y disfruta el proceso.'))}</p>
       </div>
     </div>
   `;
-  
+
   const opt = {
     margin: [8, 8, 8, 8],
-    filename: `${client.name}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`,
+    filename: `${String(safeClient.name || 'cliente').replace(/\s+/g, '_')}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`,
     image: { type: 'jpeg', quality: 0.95 },
     html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false },
     jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
   };
-  
-  // Crear un contenedor DOM temporal para html2pdf (más fiable que pasar string)
+
   const container = document.createElement('div');
   container.innerHTML = html;
   container.style.position = 'fixed';
@@ -249,12 +237,11 @@ const generatePDFReport = async (client, days) => {
   container.style.top = '0';
   container.style.width = '210mm';
   document.body.appendChild(container);
-  
+
   try {
-    const filename = `${client.name}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`;
+    const filename = `${String(safeClient.name || 'cliente').replace(/\s+/g, '_')}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`;
     const blob = await html2pdf().set(opt).from(container).outputPdf('blob');
-    // Descargar manualmente con <a> (más compatible con Capacitor/WebViews)
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -263,10 +250,10 @@ const generatePDFReport = async (client, days) => {
     a.click();
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
   } catch (e) {
-    console.error("Error generating PDF:", e);
-    alert("Error al generar el PDF: " + (e.message || e));
+    console.error('Error generating PDF:', e);
+    alert('Error al generar el PDF: ' + (e.message || e));
   } finally {
-    document.body.removeChild(container);
+    if (container.parentNode) container.parentNode.removeChild(container);
   }
 };
 
@@ -1140,8 +1127,13 @@ export default function App() {
   const [selectedMusculoGroup, setSelectedMusculoGroup] = useState("");
   const [newEx, setNewEx] = useState({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
   const [newDay, setNewDay] = useState({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" });
+  const [allowUserCreation, setAllowUserCreation] = useState(true);
+  const [clientDetailOnly, setClientDetailOnly] = useState(false);
   const [showAddClientModal, setShowAddClientModal] = useState(false);
-  const [newClient, setNewClient] = useState({ name: "", username: "", password: "", sourceTemplate: "" });
+  const [newClient, setNewClient] = useState({ name: "", username: "", password: "", sourceTemplate: "", questionnaireRequired: true });
+  const [registerMode, setRegisterMode] = useState(false);
+  const [registerWantQuestionnaireNow, setRegisterWantQuestionnaireNow] = useState(true);
+  const [registerStep, setRegisterStep] = useState("form");
   const [isEditingClientRoutine, setIsEditingClientRoutine] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -1184,9 +1176,33 @@ export default function App() {
   const [customExerciseImages, setCustomExerciseImages] = useState({});
   const [showConfetti, setShowConfetti] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [expandedStatsExercise, setExpandedStatsExercise] = useState(null);
   const [daySearchQuery, setDaySearchQuery] = useState("");
-  
+
+  const getClientSummary = (client) => {
+    const questionnaire = client?.questionnaire || {};
+    return {
+      totalDaysTrained: Array.isArray(client?.workoutData?.days) ? client.workoutData.days.length : 0,
+      objective: String(questionnaire.mainObjective || '—'),
+      injuries: String(questionnaire.injuries || '—')
+    };
+  };
+
+  const selectedClientSummary = editingClientId && db[editingClientId] ? getClientSummary(db[editingClientId]) : null;
+
+  const handleClientSelect = (id) => {
+    const client = db[id];
+    if (!client) return;
+    setEditingClientId(id);
+    setEditingDayId(null);
+    setCurrentClientId(id);
+    setIsEditingClientRoutine(true);
+    setClientDetailOnly(true);
+    setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
+    setSelectedExerciseTemplate("");
+  };
+
   // Admin visual editor states
   const [adminEditingExIdx, setAdminEditingExIdx] = useState(null);
   const [showAddExercisePanel, setShowAddExercisePanel] = useState(false);
@@ -1404,6 +1420,65 @@ export default function App() {
       return updated;
     });
     showSuccess('Ejercicio eliminado de la biblioteca');
+  }, [loggedInUser, updateUserInCloud, showSuccess]);
+
+  const saveQuestionnaire = useCallback(async (questionnaireData) => {
+    if (!loggedInUser) return;
+
+    const now = new Date().toISOString();
+    const normalizeNumber = (value) => {
+      const parsed = value === '' || value === null || value === undefined ? '' : Number(value);
+      return Number.isFinite(parsed) ? parsed : '';
+    };
+
+    const payload = {
+      ...questionnaireData,
+      name: sanitizeInput(questionnaireData.name || '', 100),
+      occupation: sanitizeInput(questionnaireData.occupation || '', 120),
+      dailyActivityLevel: sanitizeInput(questionnaireData.dailyActivityLevel || '', 80),
+      mainObjective: sanitizeInput(questionnaireData.mainObjective || '', 80),
+      deadline: sanitizeInput(questionnaireData.deadline || '', 120),
+      injuries: sanitizeInput(questionnaireData.injuries || '', 300),
+      surgeries: sanitizeInput(questionnaireData.surgeries || '', 250),
+      medicalConditions: sanitizeInput(questionnaireData.medicalConditions || '', 250),
+      medication: sanitizeInput(questionnaireData.medication || '', 250),
+      trainingPlace: sanitizeInput(questionnaireData.trainingPlace || '', 100),
+      equipment: sanitizeInput(questionnaireData.equipment || '', 250),
+      trainingExperience: sanitizeInput(questionnaireData.trainingExperience || '', 120),
+      basicTechnique: sanitizeInput(questionnaireData.basicTechnique || '', 250),
+      mobilityLimits: sanitizeInput(questionnaireData.mobilityLimits || '', 250),
+      favoriteExercises: sanitizeInput(questionnaireData.favoriteExercises || '', 250),
+      priorityMuscles: sanitizeInput(questionnaireData.priorityMuscles || '', 150),
+      sleepQuality: sanitizeInput(questionnaireData.sleepQuality || '', 80),
+      extraActivity: sanitizeInput(questionnaireData.extraActivity || '', 200),
+      nutritionState: sanitizeInput(questionnaireData.nutritionState || '', 80),
+      forbiddenExercises: sanitizeInput(questionnaireData.forbiddenExercises || '', 250),
+      additionalNotes: sanitizeInput(questionnaireData.additionalNotes || '', 500),
+      age: normalizeNumber(questionnaireData.age),
+      weightKg: normalizeNumber(questionnaireData.weightKg),
+      heightCm: normalizeNumber(questionnaireData.heightCm),
+      commitmentLevel: normalizeNumber(questionnaireData.commitmentLevel),
+      trainingDays: normalizeNumber(questionnaireData.trainingDays),
+      sessionMinutes: normalizeNumber(questionnaireData.sessionMinutes),
+      sleepHours: normalizeNumber(questionnaireData.sleepHours),
+      stressLevel: normalizeNumber(questionnaireData.stressLevel),
+      stepsDaily: normalizeNumber(questionnaireData.stepsDaily),
+      submittedAt: now,
+      updatedAt: now,
+    };
+
+    updateUserInCloud(loggedInUser, u => ({
+      ...u,
+      questionnaire: payload,
+      questionnaireRequired: false,
+      questionnaireSubmittedAt: now,
+      questionnaireUpdatedAt: now,
+      questionnaireVersion: 1,
+    }));
+
+    setShowQuestionnaire(false);
+    setShowOnboarding(false);
+    showSuccess('Cuestionario guardado correctamente');
   }, [loggedInUser, updateUserInCloud, showSuccess]);
 
   const updateCustomExercise = useCallback((idx, updatedData) => {
@@ -1675,14 +1750,21 @@ export default function App() {
           }
         }
 
-        // Onboarding para clientes nuevos (sin logs aún)
+        // Cuestionario para clientes nuevos y onboarding posterior
         if (loggedInUser !== 'entrenador' && loggedInUser !== 'coach') {
-          const clientLogs = db[loggedInUser]?.logs || {};
-          const hasAnyLogs = Object.values(clientLogs).some(arr => Array.isArray(arr) && arr.length > 0);
-          const onboardingSeen = localStorage.getItem(`athlos_onboarding_${loggedInUser}`);
-          if (!hasAnyLogs && !onboardingSeen) {
-            setShowOnboarding(true);
-          }
+                const currentUser = db[loggedInUser];
+                const clientLogs = currentUser?.logs || {};
+                const hasAnyLogs = Object.values(clientLogs).some(arr => Array.isArray(arr) && arr.length > 0);
+                const onboardingSeen = localStorage.getItem(`athlos_onboarding_${loggedInUser}`);
+                if (currentUser?.questionnaireRequired === true) {
+                  setShowQuestionnaire(true);
+                  setShowOnboarding(false);
+                } else {
+                  setShowQuestionnaire(false);
+                  if (!hasAnyLogs && !onboardingSeen) {
+                    setShowOnboarding(true);
+                  }
+                }
         }
       }
     }
@@ -2540,27 +2622,57 @@ Reglas:
 
   const runCreateProfile = async () => {
     if (isCreatingProfile) return;
-    const name = sanitizeInput(newClient.name).trim();
-    const username = sanitizeInput(newClient.username).trim().toLowerCase();
+    const name = sanitizeInput(newClient.name, 100).trim();
+    const username = sanitizeInput(newClient.username, 50).trim().toLowerCase();
     const password = newClient.password;
-    
-    if (!name || !username || !password || !validatePassword(password)) {
+
+    const normalizedId = username.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9_-]/g, "");
+    const usernameOk = /^[a-z0-9_-]{3,50}$/.test(normalizedId);
+
+    if (!name || !usernameOk || !password || !validatePassword(password)) {
       showError("Datos inválidos o contraseña débil (mín. 8 caracteres, letra + número)");
       return;
     }
     setIsCreatingProfile(true);
-    
-    const id = username.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+
+    const id = normalizedId;
     let sourceDays = [];
-    if (newClient.sourceTemplate.startsWith("tmpl_")) {
+    if (!registerMode && newClient.sourceTemplate.startsWith("tmpl_")) {
       sourceDays = (db.entrenador?.templates || []).find(t => t.id === newClient.sourceTemplate.replace("tmpl_", ""))?.days || [];
-    } else if (newClient.sourceTemplate.startsWith("client_")) {
+    } else if (!registerMode && newClient.sourceTemplate.startsWith("client_")) {
       sourceDays = db[newClient.sourceTemplate.replace("client_", "")]?.workoutData?.days || [];
     }
     try {
+      if (db[id] || INITIAL_DB[id]) {
+        showError("Ese usuario ya existe");
+        setIsCreatingProfile(false);
+        return;
+      }
+      if (db_cloud && navigator.onLine) {
+        const existingSnap = await getDocFromServer(doc(db_cloud, COLLECTION_NAME, id)).catch(() => null);
+        if (existingSnap?.exists()) {
+          showError("Ese usuario ya existe");
+          setIsCreatingProfile(false);
+          return;
+        }
+      }
+
       const hashedPassword = await hashPassword(password);
       const newUserData = {
-        username: username, password: hashedPassword, name: name, color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: structuredClone(sourceDays) }
+        username: id,
+        password: hashedPassword,
+        name: name,
+        color: "from-blue-600 to-indigo-500",
+        subtitle: registerMode ? "Nuevo usuario" : "Nuevo Plan",
+        advice: "A darlo todo.",
+        logs: {},
+        notes: [],
+        questionnaire: {},
+          questionnaireRequired: registerMode ? !!registerWantQuestionnaireNow : !!newClient.questionnaireRequired,
+        questionnaireSubmittedAt: null,
+        questionnaireUpdatedAt: null,
+        createdAt: new Date().toISOString(),
+        workoutData: { days: structuredClone(sourceDays) }
       };
       
       // Escribir DIRECTAMENTE a Firestore y esperar confirmación
@@ -2572,9 +2684,27 @@ Reglas:
       }
       // Actualizar estado local también
       setDb(prev => ({ ...prev, [id]: newUserData }));
-      setCurrentClientId(id); setShowAddClientModal(false);
-      setNewClient({ name: "", username: "", password: "", sourceTemplate: "" });
-      showSuccess("Cliente " + name + " creado ✓");
+      setCurrentClientId(id);
+      setShowAddClientModal(false);
+      setRegisterMode(false);
+      setNewClient({ name: "", username: "", password: "", sourceTemplate: "", questionnaireRequired: true });
+      if (registerMode) {
+        setLoggedInUser(id);
+        setIsAdminMode(false);
+        try {
+          const tokenHours = keepLoggedIn ? TOKEN_HOURS_KEEP : TOKEN_HOURS_DEFAULT;
+          const token = await generateToken(id, tokenHours);
+          storeToken(token, keepLoggedIn);
+        } catch (tokenError) {
+          warn("⚠️ Token generation warning:", tokenError.message);
+        }
+        showSuccess("Registro completado ✓");
+        if (registerWantQuestionnaireNow) {
+          setShowQuestionnaire(true);
+        }
+      } else {
+        showSuccess("Cliente " + name + " creado ✓");
+      }
     } catch (error) {
       err("❌ Error creando cliente:", error.message);
       setIsSyncing(false);
@@ -2657,14 +2787,38 @@ Reglas:
         <AthlosSplashScreen />
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white font-sans">
           <div className="w-full max-w-sm">
-            <div className="text-center mb-10">
-              <div className="relative mx-auto mb-3 w-56 h-56">
-                <div className="absolute inset-0 bg-amber-500/20 rounded-full blur-3xl scale-150" />
-                <img src="/athlos-logo.png" alt="Athlos" className="relative w-56 h-56 object-contain drop-shadow-[0_0_40px_rgba(245,158,11,0.5)]" />
+            <div className="relative overflow-hidden rounded-[2.5rem] border border-white/5 bg-[radial-gradient(circle_at_top,rgba(212,175,55,0.16),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] px-6 py-8 mb-10 text-center shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+              <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,rgba(255,255,255,0.03)_18%,transparent_36%,transparent_64%,rgba(255,255,255,0.03)_82%,transparent_100%)] opacity-60" />
+              <div className="absolute left-1/2 top-0 h-px w-3/4 -translate-x-1/2 bg-gradient-to-r from-transparent via-amber-400/70 to-transparent" />
+              <div className="absolute -left-10 top-10 h-24 w-24 rounded-full bg-amber-500/12 blur-3xl" />
+              <div className="absolute -right-10 bottom-10 h-24 w-24 rounded-full bg-white/10 blur-3xl" />
+              <div className="relative mx-auto mb-5 flex h-52 w-52 items-center justify-center">
+                <div className="absolute inset-2 rounded-full border border-amber-400/15" />
+                <div className="absolute inset-8 rounded-full border border-white/5" />
+                <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-2xl" />
+                <img src="/athlos-logo.png" alt="Athlos" className="relative z-10 h-48 w-48 object-contain drop-shadow-[0_0_28px_rgba(245,158,11,0.42)]" />
               </div>
-              <h2 className="text-amber-500 text-lg font-black tracking-tight">Entrenamiento Premium</h2>
-              <p className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest">by Sebas</p>
-              <p className="text-zinc-700 text-[8px] font-mono mt-1">v{APP_VERSION}</p>
+              <div className="relative space-y-2">
+                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-black/40 px-3 py-1 text-[9px] font-black uppercase tracking-[0.3em] text-amber-200 backdrop-blur-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.8)]" /> Athlos Studio
+                </div>
+                <h2 className="text-2xl font-black tracking-[-0.03em] text-white sm:text-[1.95rem]">
+                  <span className="bg-gradient-to-r from-amber-200 via-amber-500 to-white bg-clip-text text-transparent">Entrenamiento Premium</span>
+                </h2>
+                <p className="text-[10px] uppercase font-bold tracking-[0.35em] text-zinc-400">by Sebas</p>
+                <p className="text-[8px] font-mono tracking-[0.28em] text-zinc-600">v{APP_VERSION}</p>
+              </div>
+              <div className="relative mt-5 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2 text-center backdrop-blur-sm">
+                  <p className="text-[8px] font-black uppercase tracking-[0.24em] text-zinc-500">Seguimiento</p>
+                </div>
+                <div className="rounded-2xl border border-amber-500/15 bg-amber-500/8 px-3 py-2 text-center backdrop-blur-sm">
+                  <p className="text-[8px] font-black uppercase tracking-[0.24em] text-amber-300">Control</p>
+                </div>
+                <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2 text-center backdrop-blur-sm">
+                  <p className="text-[8px] font-black uppercase tracking-[0.24em] text-zinc-500">Progreso</p>
+                </div>
+              </div>
             </div>
           <div className="space-y-4">
             <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" className="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-zinc-600" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} />
@@ -2672,7 +2826,55 @@ Reglas:
             <label className="flex items-center gap-2 text-zinc-400 text-xs font-bold pl-2 cursor-pointer mt-2"><input type="checkbox" checked={keepLoggedIn} onChange={(e) => setKeepLoggedIn(e.target.checked)} className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-amber-500 accent-amber-500" />Mantener sesión iniciada</label>
             {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
             <button onClick={authenticate} disabled={isAuthenticating} className={`w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4 ${isAuthenticating ? 'opacity-60' : ''}`}>{isAuthenticating ? <Loader2 className="animate-spin mx-auto" size={20}/> : 'Acceder'}</button>
+            <button onClick={() => { setRegisterMode(true); setRegisterStep("choice"); setRegisterWantQuestionnaireNow(true); setShowAddClientModal(true); setNewClient({ name: '', username: '', password: '', sourceTemplate: '', questionnaireRequired: true }); }} className="w-full border border-amber-500/20 bg-amber-500/10 text-amber-300 font-black py-4 rounded-2xl uppercase text-[10px] shadow-lg shadow-amber-500/10 active:scale-95 transition-all">Registrarse</button>
           </div>
+          {showAddClientModal && registerMode && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
+              <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-amber-500/25 bg-black text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
+                <div className="px-6 pt-6 pb-4 bg-gradient-to-br from-amber-500/18 via-black to-zinc-950 border-b border-amber-500/10 relative overflow-hidden">
+                  <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-amber-500/15 blur-3xl" />
+                  <div className="relative inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-amber-200">
+                    <Sparkles size={12} /> Registro seguro
+                  </div>
+                  <h3 className="relative mt-4 text-2xl font-black tracking-tight text-white">Crea tu acceso</h3>
+                  <p className="relative mt-2 text-sm leading-relaxed text-zinc-300">Una cuenta nueva puede abrir el cuestionario ahora mismo para dejar tus datos listos desde el primer minuto.</p>
+                </div>
+
+                <div className="space-y-4 px-6 py-6">
+                  {registerStep === 'choice' && (
+                    <div className="grid gap-3 rounded-[1.5rem] border border-amber-500/10 bg-zinc-950 p-4">
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">¿Quieres hacer el cuestionario ahora mismo?</p>
+                      <p className="text-xs text-zinc-400 leading-relaxed">Primero elegimos si lo completas ahora o más tarde. Después creamos tu acceso.</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => { setRegisterWantQuestionnaireNow(true); setRegisterStep('form'); }} className={`rounded-2xl px-3 py-3 text-[10px] font-black uppercase transition-all ${registerWantQuestionnaireNow ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-black text-white border border-amber-500/20'}`}>Sí, ahora</button>
+                        <button type="button" onClick={() => { setRegisterWantQuestionnaireNow(false); setRegisterStep('form'); }} className={`rounded-2xl px-3 py-3 text-[10px] font-black uppercase transition-all ${!registerWantQuestionnaireNow ? 'bg-white text-black shadow-lg shadow-white/10' : 'bg-black text-white border border-white/10'}`}>Más tarde</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {registerStep === 'form' && (
+                    <>
+                      <div className="grid gap-3 rounded-[1.5rem] border border-amber-500/10 bg-zinc-950 p-4">
+                        <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.username} onChange={e=>setNewClient({...newClient, username:e.target.value})} />
+                        <input type="password" placeholder="Contraseña" className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
+                        <input type="text" placeholder="Nombre completo" className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
+                      </div>
+
+                      <div className="grid gap-3 rounded-[1.5rem] border border-amber-500/10 bg-zinc-950 p-4">
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">Resumen del registro</p>
+                        <p className="text-xs text-zinc-400 leading-relaxed">{registerWantQuestionnaireNow ? 'Al crear tu cuenta se abrirá el cuestionario automáticamente.' : 'Podrás completar el cuestionario más adelante desde tu perfil.'}</p>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button onClick={runCreateProfile} disabled={isCreatingProfile} className={`flex-1 rounded-2xl bg-amber-500 px-4 py-4 text-[10px] font-black uppercase text-black shadow-lg shadow-amber-500/20 active:scale-95 transition-all ${isCreatingProfile ? 'opacity-60' : ''}`}>{isCreatingProfile ? <><Loader2 className="animate-spin mx-auto" size={14}/> CREANDO...</> : 'Crear cuenta'}</button>
+                        <button type="button" onClick={()=>{ setShowAddClientModal(false); setRegisterMode(false); setRegisterStep('choice'); setRegisterWantQuestionnaireNow(true); }} className="rounded-2xl border border-white/10 bg-black px-4 py-4 text-[10px] font-black uppercase text-white">Cerrar</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <p className="text-center text-zinc-700 text-[9px] mt-10">Desarrollado por Sebas &copy; {new Date().getFullYear()} · v{APP_VERSION}</p>
         </div>
       </div>
@@ -2694,6 +2896,13 @@ Reglas:
 
   return (
     <div className="min-h-full font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
+      <ClientQuestionnaire
+        isOpen={showQuestionnaire && loggedInUser !== 'entrenador' && loggedInUser !== 'coach'}
+        clientName={String(client?.name || loggedInUser || '')}
+        initialData={client?.questionnaire || {}}
+        required={client?.questionnaireRequired === true}
+        onSubmit={saveQuestionnaire}
+      />
       <BackButtonExitHandler
         isEnabled={!!loggedInUser}
         canGoBack={selectedDay !== null || activeTab !== "home" || isEditingClientRoutine || editingDayId !== null}
@@ -2763,39 +2972,78 @@ Reglas:
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500"><Users size={14} className="text-amber-500" /> Clientes ({Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').length})</div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase">
                     <button onClick={fetchSyncPreview} disabled={isForceReloading || syncPreviewLoading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={(isForceReloading || syncPreviewLoading) ? 'animate-spin' : ''}/> {syncPreviewLoading ? '...' : 'Sync'}</button>
-                    <button onClick={() => setShowAddClientModal(true)} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
+                    <button onClick={() => setAllowUserCreation(!allowUserCreation)} className={`px-3 py-1.5 rounded-lg active:scale-95 font-black uppercase ${allowUserCreation ? 'bg-zinc-800 text-amber-300 border border-amber-500/20' : 'bg-amber-500 text-black border border-amber-500/20'}`}>
+                      {allowUserCreation ? 'Desactivar creación' : 'Activar creación'}
+                    </button>
+                    {allowUserCreation && (
+                      <button onClick={() => { setRegisterMode(false); setShowAddClientModal(true); }} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
+                    )}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').map(id => {
+                {!clientDetailOnly && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').sort((a, b) => {
+                      const aTime = new Date(db[a]?.createdAt || 0).getTime();
+                      const bTime = new Date(db[b]?.createdAt || 0).getTime();
+                      return bTime - aTime;
+                    }).map(id => {
                     const c = db[id];
                     const isSelected = editingClientId === id;
                     const dayCount = Array.isArray(c.workoutData?.days) ? c.workoutData.days.length : 0;
                     const logCount = Object.values(c.logs || {}).flat().length;
                     return (
-                      <button key={id} onClick={() => { setEditingClientId(id); setEditingDayId(null); setCurrentClientId(id); setIsEditingClientRoutine(true); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setSelectedExerciseTemplate(""); }}
+                      <button key={id} onClick={() => handleClientSelect(id)}
                         className={`relative p-4 rounded-2xl border text-left transition-all active:scale-[0.97] ${isSelected ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-800'}`}>
                         <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${String(c.color || 'from-blue-600 to-indigo-500')} flex items-center justify-center text-white text-xs font-black mb-2 overflow-hidden`}>
                           {c.avatar ? <img src={c.avatar} alt="" className="w-full h-full object-cover" /> : String(c.name || id).charAt(0).toUpperCase()}
                         </div>
                         <p className={`text-sm font-black truncate ${isSelected ? 'text-amber-500' : 'text-white'}`}>{String(c.name || id)}</p>
                         <p className="text-[9px] text-zinc-500 truncate mt-0.5">{String(c.subtitle || '—')}</p>
-                        <div className="flex items-center gap-3 mt-2">
+                        <div className="flex items-center gap-3 mt-2 flex-wrap">
                           <span className="text-[8px] text-zinc-600 font-bold">{dayCount} días</span>
                           <span className="text-[8px] text-zinc-600 font-bold">{logCount} logs</span>
+                                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${c.questionnaireRequired === true ? 'bg-red-500/15 text-red-300' : c.questionnaireSubmittedAt ? 'bg-emerald-500/15 text-emerald-300' : 'bg-zinc-700 text-zinc-400'}`}>{c.questionnaireRequired === true ? 'Cuestionario pendiente' : c.questionnaireSubmittedAt ? 'Cuestionario realizado' : 'Cuestionario opcional'}</span>
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="absolute top-3 right-3 text-zinc-600 hover:text-amber-500 transition-colors"><Eye size={14}/></button>
                       </button>
                     );
                   })}
-                </div>
+                  </div>
+                )}
                 
                 {editingClientId && db[editingClientId] && (
                   <div className="border-t border-zinc-800 pt-12 space-y-12 animate-in slide-in-from-top-4 mt-8">
+                    {clientDetailOnly && (
+                      <div className="flex items-center justify-between gap-4 mb-4">
+                        <button onClick={() => { setClientDetailOnly(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsEditingClientRoutine(false); }} className="text-amber-500 text-[9px] font-bold">← Volver a la lista</button>
+                        {selectedClientSummary && (
+                          <div className="bg-zinc-950 p-4 rounded-2xl border border-amber-500/15 w-full">
+                            <div className="grid grid-cols-3 gap-4 text-white">
+                              <div>
+                                <p className="text-[9px] uppercase text-zinc-400 font-black">Días entrenados</p>
+                                <p className="mt-2 text-2xl font-black">{selectedClientSummary.totalDaysTrained}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase text-zinc-400 font-black">Objetivo</p>
+                                <p className="mt-2 text-sm text-white leading-snug">{selectedClientSummary.objective}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase text-zinc-400 font-black">Lesiones</p>
+                                <p className="mt-2 text-sm text-white leading-snug">{selectedClientSummary.injuries}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* HEADER DEL CLIENTE */}
                     <div className={`bg-gradient-to-br ${String(db[editingClientId].color || "from-blue-600")} p-6 rounded-2xl text-white relative`}>
                       <div className="flex justify-end gap-2 mb-5">
-                        <button onClick={() => generatePDFReport(db[editingClientId], Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : [])} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Download size={14}/> PDF</button>
+                        <button onClick={() => {
+                          const selectedClient = db[editingClientId];
+                          if (!selectedClient) return;
+                          generatePDFReport(selectedClient, Array.isArray(selectedClient.workoutData?.days) ? selectedClient.workoutData.days : []);
+                        }} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Download size={14}/> PDF</button>
                         <button onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="bg-red-500/30 hover:bg-red-500/40 text-red-200 p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Trash2 size={14}/> Eliminar</button>
                       </div>
                       <div className="space-y-6">
@@ -3680,15 +3928,69 @@ Reglas:
         </div>
       )}
 
-      {showAddClientModal && (
+      {showAddClientModal && !registerMode && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-6 space-y-4 shadow-2xl">
-              <h3 className="text-amber-500 font-black uppercase text-sm text-center">Nuevo Cliente</h3>
+              <h3 className="text-amber-500 font-black uppercase text-sm text-center">{registerMode ? 'Registrarse' : 'Nuevo Cliente'}</h3>
+              {registerMode && registerStep === 'form' && (
+                <div className="rounded-[1.5rem] border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-white/5 p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300">
+                      <Sparkles size={18} />
+                    </div>
+                    <div>
+                      <p className="text-white font-black text-sm">Cuenta nueva</p>
+                      <p className="text-zinc-400 text-xs leading-relaxed">Crea tu acceso y decide después si quieres completar el cuestionario ahora mismo para que el entrenador te lo tenga ya registrado.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <input type="text" placeholder="Usuario" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.username} onChange={e=>setNewClient({...newClient, username:e.target.value})} />
               <input type="password" placeholder="Contraseña" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
               <input type="text" placeholder="Nombre completo" className="w-full bg-zinc-800 p-4 rounded-xl text-xs text-white outline-none" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
-              <button onClick={runCreateProfile} disabled={isCreatingProfile} className={`w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 ${isCreatingProfile ? 'opacity-60' : ''}`}>{isCreatingProfile ? <><Loader2 className="animate-spin" size={14}/> CREANDO...</> : 'CREAR CUENTA'}</button>
-              <button onClick={()=>setShowAddClientModal(false)} className="w-full text-zinc-500 text-[10px] font-bold">CANCELAR</button>
+              {!registerMode && (
+                <label className="flex items-center gap-2 text-xs font-bold text-zinc-400 cursor-pointer">
+                  <input type="checkbox" checked={newClient.questionnaireRequired} onChange={e=>setNewClient({...newClient, questionnaireRequired: e.target.checked})} className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-amber-500" />
+                  Pedir cuestionario al iniciar sesión
+                </label>
+              )}
+              {registerMode && registerStep === 'form' && (
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-white font-black text-sm">¿Quieres hacer el cuestionario ahora mismo?</p>
+                      <p className="text-zinc-400 text-xs leading-relaxed mt-1">Si lo haces ahora, el entrenador verá tus datos desde el primer acceso.</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setRegisterWantQuestionnaireNow(true)} className={`rounded-2xl px-3 py-3 text-[10px] font-black uppercase transition-all ${registerWantQuestionnaireNow ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'}`}>Sí, ahora</button>
+                    <button type="button" onClick={() => setRegisterWantQuestionnaireNow(false)} className={`rounded-2xl px-3 py-3 text-[10px] font-black uppercase transition-all ${!registerWantQuestionnaireNow ? 'bg-zinc-200 text-black' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'}`}>Más tarde</button>
+                  </div>
+                </div>
+              )}
+              {registerMode && registerStep === 'questionnaire' && (
+                <div className="rounded-[1.5rem] border border-emerald-500/20 bg-emerald-500/10 p-4 space-y-2">
+                  <p className="text-emerald-200 font-black text-sm uppercase">Cuestionario inmediato activado</p>
+                  <p className="text-zinc-300 text-xs leading-relaxed">Al crear la cuenta, se abrirá el cuestionario automáticamente para que lo completes en ese momento.</p>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (registerMode && registerStep === 'form') {
+                    setRegisterStep('questionnaire');
+                    return;
+                  }
+                  runCreateProfile();
+                }}
+                disabled={isCreatingProfile}
+                className={`w-full bg-amber-500 text-black font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2 ${isCreatingProfile ? 'opacity-60' : ''}`}
+              >{isCreatingProfile ? <><Loader2 className="animate-spin" size={14}/> CREANDO...</> : registerMode && registerStep === 'form' ? 'CONTINUAR' : 'CREAR CUENTA'}</button>
+              {registerMode && registerStep === 'questionnaire' && (
+                <button type="button" onClick={runCreateProfile} disabled={isCreatingProfile} className="w-full bg-emerald-500 text-black font-black py-4 rounded-xl text-[10px] uppercase flex items-center justify-center gap-2">
+                  {isCreatingProfile ? <><Loader2 className="animate-spin" size={14}/> CREANDO...</> : 'CREAR Y EMPEZAR'}
+                </button>
+              )}
+              <button onClick={()=>{ setShowAddClientModal(false); setRegisterMode(false); setRegisterStep('form'); setRegisterWantQuestionnaireNow(true); }} className="w-full text-zinc-500 text-[10px] font-bold">CANCELAR</button>
            </div>
         </div>
       )}
@@ -3696,44 +3998,122 @@ Reglas:
       {/* Admin: Client Info & Password Reset Modal */}
       {showClientInfoModal && clientInfoTarget && db[clientInfoTarget] && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-[2rem] p-6 space-y-5 shadow-2xl">
+          <div className="bg-zinc-950 border border-amber-500/15 w-full max-w-2xl rounded-[2rem] p-6 space-y-5 shadow-[0_30px_120px_rgba(0,0,0,0.65)] max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center">
               <h3 className="text-amber-500 font-black uppercase text-sm flex items-center gap-2"><User size={18}/> Datos Cliente</h3>
               <button onClick={() => { setShowClientInfoModal(false); setClientInfoTarget(null); }}><X size={20} className="text-zinc-500"/></button>
             </div>
 
-            <div className="space-y-3">
-              <div className="bg-zinc-800 p-4 rounded-xl space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500 text-[9px] font-black uppercase">Nombre</span>
-                  <span className="text-white text-sm font-bold">{String(db[clientInfoTarget].name || clientInfoTarget)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500 text-[9px] font-black uppercase">Usuario</span>
-                  <span className="text-white text-sm font-bold">{String(db[clientInfoTarget].username || clientInfoTarget)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500 text-[9px] font-black uppercase">Subtítulo</span>
-                  <span className="text-zinc-300 text-xs">{String(db[clientInfoTarget].subtitle || "—")}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500 text-[9px] font-black uppercase">Días rutina</span>
-                  <span className="text-zinc-300 text-xs">{(Array.isArray(db[clientInfoTarget].workoutData?.days) ? db[clientInfoTarget].workoutData.days : []).length}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500 text-[9px] font-black uppercase">Registros</span>
-                  <span className="text-zinc-300 text-xs">{Object.values(db[clientInfoTarget].logs || {}).flat().length}</span>
-                </div>
-              </div>
+            <div className="space-y-5">
+              {(() => {
+                const clientData = db[clientInfoTarget];
+                const questionnaire = clientData.questionnaire || {};
+                const hasQuestionnaire = Object.keys(questionnaire).length > 0;
+                const objective = String(questionnaire.mainObjective || '—');
+                const injuries = String(questionnaire.injuries || '—');
+                const trainingPlan = `${String(questionnaire.trainingDays || '—')} días · ${String(questionnaire.sessionMinutes || '—')} min`;
+                const recovery = `${String(questionnaire.sleepHours || '—')} h · ${String(questionnaire.stressLevel || '—')}/10`;
+                const checklist = [
+                  { label: 'Nombre', value: String(clientData.name || clientInfoTarget) },
+                  { label: 'Usuario', value: String(clientData.username || clientInfoTarget) },
+                  { label: 'Subtítulo', value: String(clientData.subtitle || '—') },
+                  { label: 'Días rutina', value: String((Array.isArray(clientData.workoutData?.days) ? clientData.workoutData.days : []).length) },
+                  { label: 'Registros', value: String(Object.values(clientData.logs || {}).flat().length) },
+                ];
 
-              <div className="border-t border-zinc-800 pt-4 space-y-3">
-                <h4 className="text-amber-500 text-[10px] font-black uppercase flex items-center gap-2"><Key size={12}/> Resetear Contraseña</h4>
-                <input type="password" placeholder="Nueva contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwd} onChange={e => setAdminResetPwd(e.target.value)} />
-                <input type="password" placeholder="Confirmar contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwdConfirm} onChange={e => setAdminResetPwdConfirm(e.target.value)} />
-                {adminResetError && <p className="text-red-500 text-[10px] text-center">{String(adminResetError)}</p>}
-                {adminResetSuccess && <p className="text-green-500 text-[10px] font-bold text-center">{String(adminResetSuccess)}</p>}
-                <button onClick={adminResetClientPassword} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">CAMBIAR CONTRASEÑA</button>
-              </div>
+                return (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {checklist.map(item => (
+                        <div key={item.label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-500">{item.label}</p>
+                          <p className="mt-2 text-sm font-bold text-white break-words">{item.value}</p>
+                        </div>
+                      ))}
+                      <div className={`rounded-2xl border p-4 ${clientData.questionnaireSubmittedAt ? 'border-emerald-500/20 bg-emerald-500/10' : clientData.questionnaireRequired === true ? 'border-red-500/20 bg-red-500/10' : 'border-white/8 bg-white/[0.03]'}`}>
+                        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-500">Cuestionario</p>
+                        <p className={`mt-2 text-sm font-bold ${clientData.questionnaireSubmittedAt ? 'text-emerald-300' : clientData.questionnaireRequired === true ? 'text-red-300' : 'text-zinc-300'}`}>{clientData.questionnaireSubmittedAt ? 'Cuestionario realizado' : clientData.questionnaireRequired === true ? 'Pendiente' : 'Opcional'}</p>
+                        {clientData.questionnaireSubmittedAt && (
+                          <p className="mt-1 text-[10px] text-zinc-400">Última respuesta: {new Date(clientData.questionnaireSubmittedAt).toLocaleDateString('es-ES')}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-zinc-800 pt-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <h4 className="text-amber-500 text-[10px] font-black uppercase flex items-center gap-2"><Sparkles size={12}/> Cuestionario</h4>
+                        <button
+                          onClick={() => updateUserInCloud(clientInfoTarget, u => ({ ...u, questionnaireRequired: !(u.questionnaireRequired === true) }))}
+                          className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase ${clientData.questionnaireSubmittedAt ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20' : 'bg-red-500/15 text-red-300 border border-red-500/20'}`}
+                        >
+                          {clientData.questionnaireSubmittedAt ? 'Cuestionario realizado' : 'Pedir cuestionario'}
+                        </button>
+                      </div>
+
+                      {hasQuestionnaire ? (
+                        <div className="space-y-4">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-amber-500/15 bg-amber-500/8 p-4">
+                              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-amber-300">Objetivo principal</p>
+                              <p className="mt-2 text-lg font-black text-white">{objective}</p>
+                              <p className="mt-1 text-[10px] text-zinc-400">{String(questionnaire.deadline || 'Sin fecha objetivo definida')}</p>
+                            </div>
+                            <div className="rounded-2xl border border-red-500/15 bg-red-500/8 p-4">
+                              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-red-300">Lesiones / alertas</p>
+                              <p className="mt-2 text-sm font-bold text-white leading-relaxed line-clamp-4">{injuries}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[9px]">
+                            <div className="rounded-xl bg-zinc-900 p-3 border border-zinc-800">
+                              <p className="text-zinc-500 uppercase font-black">Entrenamiento</p>
+                              <p className="text-zinc-200 mt-1">{trainingPlan}</p>
+                              <p className="text-zinc-400 mt-1 line-clamp-2">{String(questionnaire.trainingPlace || '—')} · {String(questionnaire.equipment || '—')}</p>
+                            </div>
+                            <div className="rounded-xl bg-zinc-900 p-3 border border-zinc-800">
+                              <p className="text-zinc-500 uppercase font-black">Recuperación</p>
+                              <p className="text-zinc-200 mt-1">{recovery}</p>
+                              <p className="text-zinc-400 mt-1 line-clamp-2">{String(questionnaire.sleepQuality || '—')} · {String(questionnaire.extraActivity || '—')}</p>
+                            </div>
+                            <div className="rounded-xl bg-zinc-900 p-3 border border-zinc-800 sm:col-span-2">
+                              <p className="text-zinc-500 uppercase font-black">Resumen rápido</p>
+                              <p className="text-zinc-200 mt-1 leading-relaxed line-clamp-4">{String(questionnaire.additionalNotes || questionnaire.favoriteExercises || questionnaire.priorityMuscles || 'Sin notas adicionales')}</p>
+                            </div>
+                          </div>
+
+                          <details className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                            <summary className="cursor-pointer list-none text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">Ver cuestionario completo</summary>
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[9px]">
+                              {Object.entries(questionnaire).map(([key, value]) => {
+                                const readable = String(value || '—');
+                                return (
+                                  <div key={key} className="rounded-xl bg-zinc-900 p-3 border border-zinc-800">
+                                    <p className="text-zinc-500 uppercase font-black">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                                    <p className="text-zinc-200 mt-1 whitespace-pre-wrap leading-relaxed">{readable}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+                          Todavía no hay cuestionario guardado para este cliente.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-zinc-800 pt-4 space-y-3">
+                      <h4 className="text-amber-500 text-[10px] font-black uppercase flex items-center gap-2"><Key size={12}/> Resetear Contraseña</h4>
+                      <input type="password" placeholder="Nueva contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwd} onChange={e => setAdminResetPwd(e.target.value)} />
+                      <input type="password" placeholder="Confirmar contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwdConfirm} onChange={e => setAdminResetPwdConfirm(e.target.value)} />
+                      {adminResetError && <p className="text-red-500 text-[10px] text-center">{String(adminResetError)}</p>}
+                      {adminResetSuccess && <p className="text-green-500 text-[10px] font-bold text-center">{String(adminResetSuccess)}</p>}
+                      <button onClick={adminResetClientPassword} className="w-full bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">CAMBIAR CONTRASEÑA</button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
