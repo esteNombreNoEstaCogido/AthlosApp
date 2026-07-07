@@ -3,6 +3,7 @@
   "appName": "Athlos",
   "webDir": "dist",
   "server": {
+    "url": "https://athlos.vercel.app",
     "androidScheme": "https"
   },
   "android": {
