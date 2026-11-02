@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react';
-import { Camera, X, Plus, ChevronLeft, ChevronRight, User, Loader2 } from 'lucide-react';
+import { Camera, X, Plus, ChevronLeft, ChevronRight, User, Loader2, Trash2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
 const ANGLES = [
@@ -92,7 +92,7 @@ const PhotoSlot = ({ angle, photo, onCapture, palette, isLoading }) => {
   );
 };
 
-export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, palette }) => {
+export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, onDeletePhotos, palette }) => {
   const [showUpload, setShowUpload] = useState(false);
   const [currentPhotos, setCurrentPhotos] = useState({ front: null, side: null, back: null });
   const [isLoading, setIsLoading] = useState(false);
@@ -227,9 +227,12 @@ export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, palette }) 
         <div className="space-y-4">
           {sortedEntries.map(entry => (
             <div key={entry.id} className="p-4 rounded-2xl border" style={{ backgroundColor: palette?.card || '#18181b', borderColor: `${accent}15` }}>
-              <p className="text-[10px] font-bold mb-3" style={{ color: `${palette?.text || '#fff'}70` }}>
-                {new Date(entry.timestamp).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
-              </p>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold" style={{ color: `${palette?.text || '#fff'}70` }}>
+                  {new Date(entry.timestamp).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+                {onDeletePhotos && <button aria-label="Eliminar fotos de esta fecha" onClick={() => { if (window.confirm('¿Eliminar estas fotos de progreso? Esta acción no se puede deshacer.')) onDeletePhotos(entry.id); }} className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"><Trash2 size={14}/></button>}
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 {ANGLES.map(angle => (
                   <div key={angle.id} className="aspect-[3/4] rounded-xl overflow-hidden" style={{ backgroundColor: palette?.dark || '#09090b' }}>

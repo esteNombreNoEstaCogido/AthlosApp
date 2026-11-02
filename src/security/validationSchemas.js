@@ -29,10 +29,10 @@ const UserSchema = {
       maxLength: 50,
       pattern: '^[a-zA-Z0-9_-]+$', // Alphanumeric, underscore, hyphen only
     },
-    password: {
+    authUid: {
       type: 'string',
-      minLength: 20, // bcryptjs hash always > 20 chars
-      maxLength: 100,
+      minLength: 1,
+      maxLength: 128,
     },
     name: {
       type: 'string',
@@ -63,6 +63,60 @@ const UserSchema = {
     questionnaireUpdatedAt: {
       type: 'string',
     },
+    weeklyWorkoutGoal: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 7,
+    },
+    trainingDaysHistory: {
+      type: 'array',
+      maxItems: 1825,
+      uniqueItems: true,
+      items: {
+        type: 'string',
+        pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$',
+      },
+    },
+    completedSessionsTotal: {
+      type: 'integer',
+      minimum: 0,
+    },
+    completedSessions: {
+      type: 'array',
+      maxItems: 200,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          dayId: { type: ['number', 'string', 'null'] },
+          dayTitle: { type: 'string', maxLength: 120 },
+          startedAt: { type: 'string' },
+          finishedAt: { type: 'string' },
+          durationSeconds: { type: 'integer', minimum: 0 },
+        },
+        required: ['id', 'finishedAt', 'durationSeconds'],
+      },
+    },
+    exerciseFeedback: {
+      type: 'array',
+      maxItems: 30,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          exerciseName: { type: 'string', minLength: 1, maxLength: 100 },
+          dayId: { type: ['number', 'string', 'null'] },
+          dayTitle: { type: 'string', maxLength: 120 },
+          reaction: { type: 'string', enum: ['liked', 'neutral', 'change'] },
+          reason: { type: 'string', enum: ['', 'pain', 'too_hard', 'too_easy', 'preference', 'equipment'] },
+          comment: { type: 'string', maxLength: 240 },
+          createdAt: { type: 'string' },
+          status: { type: 'string', enum: ['new', 'reviewed', 'resolved'] },
+          reviewedAt: { type: ['string', 'null'] },
+        },
+        required: ['id', 'exerciseName', 'reaction', 'createdAt', 'status'],
+      },
+    },
     logs: {
       type: 'object',
     },
@@ -78,7 +132,7 @@ const UserSchema = {
       },
     },
   },
-  required: ['username', 'password', 'name'],
+  required: ['username', 'authUid', 'name'],
 };
 
 /**

@@ -11,7 +11,6 @@ const REQUIRED_VARS = [
   'VITE_FIREBASE_PROJECT_ID',
   'VITE_FIREBASE_APP_ID',
   'VITE_FIREBASE_MESSAGING_SENDER_ID',
-  'VITE_JWT_SECRET',
 ];
 
 const envFile = path.resolve(__dirname, '../.env');

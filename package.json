@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/validateEnv.cjs && vite build",
+    "security:check": "node scripts/phase6_securityTests.js && node scripts/check-rules.js",
+    "test:calendar": "node --test scripts/workoutCalendar.test.js",
+    "test:feedback": "node --test scripts/exerciseFeedback.test.js",
+    "test:exercises": "node --test scripts/workoutExercises.test.js",
     "preview": "vite preview",
     "cap:sync": "npx cap sync",
     "cap:open": "npx cap open android",
@@ -19,7 +23,6 @@
     "@capacitor/core": "^8.2.0",
     "@capacitor/toast": "^8.0.1",
     "ajv": "^8.18.0",
-    "bcryptjs": "^3.0.3",
     "firebase": "^12.10.0",
     "html2pdf.js": "^0.14.0",
     "lucide-react": "^0.563.0",

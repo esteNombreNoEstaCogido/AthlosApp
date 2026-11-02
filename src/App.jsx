@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo, useRef, useMemo } from "react";
-import { hashPassword, verifyPassword, validatePassword } from "./security/passwordManager.js";
+import { validatePassword } from "./security/passwordManager.js";
 import { 
   sanitizeInput, sanitizeUrl, safeJSONParse, escapeHtml 
 } from "./security/sanitization.js";
@@ -7,9 +7,6 @@ import {
   safeParseWeight, safeParseReps, safeParseSerries,
   validateWorkoutLogData as validateLogAJV
 } from "./security/validationSchemas.js";
-import {
-  generateToken, verifyToken, storeToken, getStoredToken, clearToken
-} from "./security/tokenManager.js";
 import { AthlosSplashScreen } from "./components/SplashScreen.jsx";
 import { AthlosBrandHeader } from "./components/AthlosBrandHeader.jsx";
 import { ClientQuestionnaire } from "./components/ClientQuestionnaire.jsx";
@@ -20,19 +17,28 @@ import { AdminMotivationalManager } from "./components/AdminMotivationalManager.
 import { ExerciseImageManager } from "./components/ExerciseImageManager.jsx";
 import { ProgressTracker } from "./components/ProgressTracker.jsx";
 import { PhotoComparator } from "./components/PhotoComparator.jsx";
+import { AdminExerciseFeedbackInbox, ClientExerciseFeedback } from "./components/ExerciseFeedback.jsx";
 import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
+import { parseWorkoutLogDate as parseDateLog, toLocalDateKey, buildMonthCalendarDays, getWeeklyGoalProgress, getTrainingDateKeys, recordTrainingDay } from "./utils/workoutCalendar.js";
+import { appendExerciseToWorkoutDay, removeExerciseFromWorkoutDay } from "./utils/workoutExercises.js";
 import html2pdf from "html2pdf.js/dist/html2pdf.bundle.min.js";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
+import {
+  getAuth, onAuthStateChanged, setPersistence, browserLocalPersistence,
+  browserSessionPersistence, signInWithEmailAndPassword, signInWithCustomToken,
+  signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword
+} from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { 
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-  getFirestore, doc, setDoc, getDoc, getDocFromServer, getDocs, collection, onSnapshot, deleteDoc,
+  getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot,
   enableNetwork 
 } from "firebase/firestore";
 import {
   Dumbbell, Flame, Info, ChevronRight, ArrowLeft, User, Heart, Youtube, 
   PlusCircle, History, Trash2, Clock, MessageSquareHeart, X, Zap, Users, 
-  Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, 
+  Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, ChevronLeft,
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
   Camera, Eye, Download, TrendingDown, Scale, Image, RefreshCw, Database,
   Swords, Target, Shield, Bike, Footprints, Mountain, Timer, Activity,
@@ -80,16 +86,17 @@ const firebaseConfig = {
 
 const APP_VERSION = "2.5.0";
 const COLLECTION_NAME = "athlos_clients";
-// Migración: actualizar usuarios cuya INITIAL_DB ha cambiado (one-shot por versión)
-const DATA_MIGRATION_VERSION = "2.5.2";
+const ADMIN_FOLLOWUPS_COLLECTION = "athlos_admin_followups";
 const __DEV__ = import.meta.env.MODE === 'development';
 const log = (...args) => { if (__DEV__) console.log(...args); };
 const warn = (...args) => { if (__DEV__) console.warn(...args); };
 const err = (...args) => { console.error(...args); };
 
-let app, db_cloud;
+let app, db_cloud, firebaseAuth, firebaseFunctions;
 try {
   app = initializeApp(firebaseConfig);
+  firebaseAuth = getAuth(app);
+  firebaseFunctions = getFunctions(app);
   // Usar persistentSingleTabManager (compatible con Android WebView)
   // persistentMultipleTabManager usa BroadcastChannel que no existe en WebViews
   try {
@@ -117,8 +124,7 @@ if (!db_cloud) {
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_BASE_MS = 5 * 60 * 1000; // 5 minutos base
 const MAX_LOG_ENTRIES = 15;
-const TOKEN_HOURS_DEFAULT = 24;
-const TOKEN_HOURS_KEEP = 720; // 30 días
+const AUTH_EMAIL_DOMAIN = "@athlos.app";
 
 // ==========================================
 // UTILIDADES BLINDADAS
@@ -126,16 +132,6 @@ const TOKEN_HOURS_KEEP = 720; // 30 días
 // ✅ sanitizeInput, sanitizeUrl imported from src/security/sanitization.js
 // Uses HTML entity escaping for XSS prevention
 // Blocks data: URIs in URLs (prevents XSS via data URLs)
-
-const getSavedSession = () => {
-  try {
-    const local = localStorage.getItem("athlos_session_final");
-    if (local && local !== "undefined") return JSON.parse(local);
-    const session = sessionStorage.getItem("athlos_session_final");
-    if (session && session !== "undefined") return JSON.parse(session);
-  } catch (e) { return null; }
-  return null;
-};
 
 const callGeminiAPI = async (prompt) => {
   const geminiKey = import.meta.env.VITE_GEMINI_KEY;
@@ -156,8 +152,7 @@ const callGeminiAPI = async (prompt) => {
 // ==========================================
 // SEGURIDAD & UTILITIES
 // ==========================================
-// ✅ Secure password functions imported from passwordManager.js
-// hashPassword, validatePassword are now bcryptjs-backed
+// Password policy validation only; Firebase Authentication handles credentials.
 
 const generatePDFReport = async (client, days = []) => {
   const esc = escapeHtml;
@@ -447,9 +442,9 @@ const RUTINA_TAMARA_OFICIAL = [
 ];
 
 const INITIAL_DB = {
-  entrenador: { username: "coach", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
-  tamara: { username: "tamara", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Plan Recomposición: Hipertrofia Glúteo + Salud Lumbar", advice: "Si las 10 reps salen fáciles, sube el peso. Cada hora sentada levántate 30s a estirar psoas. Proteína: 1.8-2g por kilo. Los días de estrés busca calidad, no récords.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
-  pivon: { username: "pivon", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero y espalda sana", advice: "Técnica perfecta por tu escoliosis.", logs: {}, notes: [], workoutData: { days: [
+  entrenador: { username: "coach", name: "Coach Jhon", color: "from-zinc-800 to-zinc-900", subtitle: "Panel de Control", advice: "Calidad técnica.", logs: {}, notes: [], templates: [{ id: "tmpl_tamara", name: "Plantilla Tamara", days: RUTINA_TAMARA_OFICIAL }], workoutData: { days: [] } },
+  tamara: { username: "tamara", name: "Tamara", color: "from-blue-600 to-indigo-500", subtitle: "Plan Recomposición: Hipertrofia Glúteo + Salud Lumbar", advice: "Si las 10 reps salen fáciles, sube el peso. Cada hora sentada levántate 30s a estirar psoas. Proteína: 1.8-2g por kilo. Los días de estrés busca calidad, no récords.", logs: {}, notes: [], workoutData: { days: RUTINA_TAMARA_OFICIAL } },
+  pivon: { username: "pivon", name: "Novia Pivón", color: "from-pink-500 to-rose-400", subtitle: "Glúteos de acero y espalda sana", advice: "Técnica perfecta por tu escoliosis.", logs: {}, notes: [], workoutData: { days: [
     { id: 201, title: "Día 1: Glúteos e Isquios", focus: "Fuerza", warmupType: "warmupLower", isCircuit: false, exercises: [
       { name: "Hip Thrust", s: 4, r: "6-8", tip: "Bajada 3s.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1590239926044-23927693630f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=tecnica+hip+thrust" },
       { name: "Peso Muerto Rumano", s: 3, r: "10-12", tip: "Barra pegada.", mus: "Isquios", img: "https://images.unsplash.com/photo-1594737625785-a2bad9931c60?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=peso+muerto+rumano" },
@@ -475,7 +470,7 @@ const INITIAL_DB = {
       { name: "Monster Walk", s: 3, r: "20", tip: "Con banda.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=monster+walk" }
     ]}
   ]} },
-  sebas: { username: "sebas", password: "$2b$12$TCfcu2SZmVZKwRsqJl5rx.UTqoNSbFMQw86DYvi2TzKIN8xYuRPgC", name: "Sebas Coach", color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: [
+  sebas: { username: "sebas", name: "Sebas Coach", color: "from-blue-600 to-indigo-500", subtitle: "Nuevo Plan", advice: "A darlo todo.", logs: {}, notes: [], workoutData: { days: [
     { id: 11, title: "LUNES: PUSH", focus: "Pectoral Superior + Tríceps", warmupType: "warmupUpper", isCircuit: false, exercises: [
       { name: "Press Inclinado Mancuernas", s: 3, r: "8-10", tip: "RIR 1. Más seguro para el hombro.", mus: "Pecho Sup", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+inclinado+mancuernas+tecnica" },
       { name: "Press Pecho Máquina Convergente", s: 3, r: "10-12", tip: "RIR 0 en la última serie.", mus: "Pecho", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+maquina+convergente+pecho" },
@@ -508,13 +503,13 @@ const INITIAL_DB = {
       { name: "Rueda Abdominal", s: 4, r: "Fallo", tip: "Control lumbar.", mus: "Abdomen", img: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=rueda+abdominal+tecnica" }
     ]}
   ]} },
-  sebas2: { username: "sebas2", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [
+  sebas2: { username: "sebas2", name: "Sebas 2", color: "from-cyan-600 to-blue-500", subtitle: "Strength", advice: "Sé consistente.", logs: {}, notes: [], workoutData: { days: [
     { id: 404, title: "Lower Strength", focus: "Fuerza", warmupType: "warmupLower", exercises: [
       { name: "Sentadilla Pesada", s: 5, r: "5", tip: "Máxima carga.", mus: "Glúteo", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=yjhz0VwpJ8E" },
       { name: "Peso Muerto", s: 3, r: "5", tip: "Carga máxima.", mus: "Espalda", img: "https://images.unsplash.com/photo-1574680178050-55c6a6a96e0a?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/watch?v=op9kVnSso6Q" }
     ]}
   ]} },
-  claudia: { username: "claudia", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Plan Completo 4 Días", advice: "Baja controlada, subida explosiva. Sé constante y disfruta el proceso.", logs: {}, notes: [], workoutData: { days: [
+  claudia: { username: "claudia", name: "Claudia", color: "from-rose-600 to-pink-500", subtitle: "Plan Completo 4 Días", advice: "Baja controlada, subida explosiva. Sé constante y disfruta el proceso.", logs: {}, notes: [], workoutData: { days: [
     { id: 405, title: "DÍA 1: Inferior A (Empuje/Máximo)", focus: "Piernas & Glúteo", warmupType: "warmupLower", icon: "dumbbell", exercises: [
       { name: "Hip Thrust", s: 3, r: "8", tip: "Pausa 2\" arriba", mus: "Glúteo", img: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=hip+thrust+tecnica" },
       { name: "Prensa Pies Altos", s: 3, r: "10", tip: "Empuje talones. Superserie con gemelo en prensa al fallo", mus: "Piernas", img: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=prensa+pies+altos", superset: true },
@@ -543,7 +538,7 @@ const INITIAL_DB = {
       { name: "Press Pallof", s: 4, r: "10", tip: "Espalda recta", mus: "Core", img: "https://images.unsplash.com/photo-1608805755619-8d716c7ab49f?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=press+pallof+polea" }
     ]}
   ]} },
-  blanca: { username: "blanca", password: "$2b$12$MFuiss47HBbRuRps4n93/OKIzXuSnSx2avidp0c4ZER.dmRP7dtJm", name: "Blanca Aguero", color: "from-purple-600 to-pink-500", subtitle: "PLAN DE ENTRENAMIENTO - BLANCA AGUERO (V2)", advice: "Respiración: No bloquees aire. Exhala al subir. Hombro: Sube sin dolor. Explosividad: Bajada controlada, subida rápida. Seguridad: Cerca de pared o silla. Calidad: Si dobla la espalda, serie termina.", logs: {}, notes: [], workoutData: { days: [
+  blanca: { username: "blanca", name: "Blanca Aguero", color: "from-purple-600 to-pink-500", subtitle: "PLAN DE ENTRENAMIENTO - BLANCA AGUERO (V2)", advice: "Respiración: No bloquees aire. Exhala al subir. Hombro: Sube sin dolor. Explosividad: Bajada controlada, subida rápida. Seguridad: Cerca de pared o silla. Calidad: Si dobla la espalda, serie termina.", logs: {}, notes: [], workoutData: { days: [
     { id: 501, title: "CALENTAMIENTO Y MOVILIDAD", focus: "Preparación (10 min)", warmupType: "warmupAthlos", exercises: [
       { name: "Cat-Cow", s: 1, r: "10", tip: "Lentas. Movilidad columna", mus: "Movilidad", img: "https://images.unsplash.com/photo-1544367567-0d5fccc6678d?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60", yt: "https://www.youtube.com/results?search_query=cat+cow" },
       { name: "Retracción Escapular", s: 1, r: "12", tip: "Juntar hombros atrás y abajo", mus: "Hombros", img: "https://images.unsplash.com/photo-1549576528-b0f2f33aafc5?auto=format&fit=crop&q=80&w=400", yt: "https://www.youtube.com/results?search_query=retraccion+escapular" },
@@ -721,12 +716,28 @@ const formatDateLog = (d = new Date()) => {
   const yy = String(d.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
 };
-const parseDateLog = (dateStr) => {
-  if (!dateStr) return null;
-  const parts = dateStr.split('/').map(Number);
-  if (parts.length === 3) return new Date(2000 + parts[2], parts[1] - 1, parts[0]);
-  if (parts.length === 2) return new Date(new Date().getFullYear(), parts[1] - 1, parts[0]);
-  return null;
+const getClientFollowUp = (client) => {
+  const entries = Object.values(client?.logs || {}).flatMap(logs => Array.isArray(logs) ? logs : []);
+  const dates = entries.map(entry => parseDateLog(entry?.date)).filter(Boolean);
+  const activityDate = client?.lastActivityAt ? new Date(client.lastActivityAt) : null;
+  if (activityDate && !Number.isNaN(activityDate.getTime())) dates.push(activityDate);
+  (Array.isArray(client?.notes) ? client.notes : []).forEach(note => {
+    const noteDate = parseDateLog(note?.date);
+    if (noteDate) dates.push(noteDate);
+  });
+  const lastActivity = dates.length ? new Date(Math.max(...dates.map(date => date.getTime()))) : null;
+  const daysSinceActivity = lastActivity ? Math.max(0, Math.floor((Date.now() - lastActivity.getTime()) / 86400000)) : null;
+  const pendingActions = (Array.isArray(client?.followUpActions) ? client.followUpActions : [])
+    .filter(action => action.status !== 'completed')
+    .sort((a, b) => String(a.dueDate || '9999-12-31').localeCompare(String(b.dueDate || '9999-12-31')));
+  const pendingFeedbackCount = (Array.isArray(client?.exerciseFeedback) ? client.exerciseFeedback : []).filter(item => item.status === 'new').length;
+  const nextAction = pendingActions[0] || null;
+  const actionOverdue = !!nextAction?.dueDate && nextAction.dueDate < new Date().toISOString().slice(0, 10);
+
+  if (client?.questionnaireRequired === true) return { key: 'questionnaire', label: 'Cuestionario pendiente', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
+  if (!entries.length) return { key: 'no-training', label: 'Sin entrenamientos', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
+  if (daysSinceActivity > 14) return { key: 'inactive', label: `${daysSinceActivity} días sin actividad`, daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
+  return { key: 'active', label: 'Al día', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
 };
 const isSameDayStr = (logDate, refDate) => {
   if (!logDate) return false;
@@ -748,7 +759,7 @@ const isDayCompletedToday = (day, workoutLogs) => {
 };
 
 // Helper: calculate consecutive training days (streak)
-const calculateStreak = (workoutLogs) => {
+const calculateStreak = (workoutLogs, trainingDaysHistory = []) => {
   const allDates = new Set();
   Object.values(workoutLogs).forEach(logs => {
     if (!Array.isArray(logs)) return;
@@ -758,6 +769,11 @@ const calculateStreak = (workoutLogs) => {
       const parsed = parseDateLog(l.date);
       if (parsed) allDates.add(formatDateLog(parsed));
     });
+  });
+  (Array.isArray(trainingDaysHistory) ? trainingDaysHistory : []).forEach(dateKey => {
+    if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+    const parsed = new Date(`${dateKey}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime()) && toLocalDateKey(parsed) === dateKey) allDates.add(formatDateLog(parsed));
   });
   if (allDates.size === 0) return 0;
   let streak = 0;
@@ -772,7 +788,7 @@ const calculateStreak = (workoutLogs) => {
 };
 
 // Helper: weekly summary stats
-const getWeeklySummary = (workoutLogs) => {
+const getWeeklySummary = (workoutLogs, trainingDaysHistory = []) => {
   const now = new Date();
   const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
   const monday = new Date(now);
@@ -797,14 +813,23 @@ const getWeeklySummary = (workoutLogs) => {
 
       const vol = (parseFloat(l.weight) || 0) * (parseInt(l.reps) || 0);
       if (logDate >= monday) {
-        thisWeekDays.add(l.date);
+        thisWeekDays.add(toLocalDateKey(logDate));
         thisWeekVolume += vol;
         thisWeekSets++;
       } else if (logDate >= prevMonday && logDate < monday) {
-        prevWeekDays.add(l.date);
+        prevWeekDays.add(toLocalDateKey(logDate));
         prevWeekVolume += vol;
       }
     });
+  });
+
+  (Array.isArray(trainingDaysHistory) ? trainingDaysHistory : []).forEach(dateKey => {
+    if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+    const trainingDate = new Date(`${dateKey}T00:00:00`);
+    if (Number.isNaN(trainingDate.getTime()) || toLocalDateKey(trainingDate) !== dateKey) return;
+    const normalized = toLocalDateKey(trainingDate);
+    if (trainingDate >= monday) thisWeekDays.add(normalized);
+    else if (trainingDate >= prevMonday && trainingDate < monday) prevWeekDays.add(normalized);
   });
 
   const volumeChange = prevWeekVolume > 0 ? Math.round(((thisWeekVolume - prevWeekVolume) / prevWeekVolume) * 100) : 0;
@@ -936,9 +961,13 @@ const ExpandedChart = ({ logs, exName, exSets, mode, color, isAdmin, onClose }) 
   );
 };
 
-const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, accentColor, onAddExerciseNote, exerciseNotes, palette }) => {
+const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onUpdateLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, dayTitle, accentColor, onAddExerciseNote, exerciseNotes, exerciseFeedback, onAddExerciseFeedback, canSubmitFeedback, palette }) => {
   const [localW, setLocalW] = useState("");
   const [localR, setLocalR] = useState("");
+  const [localRir, setLocalRir] = useState('');
+  const [localRest, setLocalRest] = useState('90');
+  const [editingLogId, setEditingLogId] = useState(null);
+  const [editLogValues, setEditLogValues] = useState({ weight: '', reps: '', rir: '' });
   const [showCalc, setShowCalc] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [noteInput, setNoteInput] = useState("");
@@ -983,9 +1012,11 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
     // Solución del Botón Mágico '+'
     const weightToUse = localW !== "" ? localW : (suggestedWeight || (logs.length > 0 ? logs[0].weight : 10)); 
     const repsToUse = localR !== "" ? localR : (targetRepsCalc || 10);
-    onAddLog(safeName, weightToUse, repsToUse);
+    onAddLog(safeName, weightToUse, repsToUse, { rir: localRir, restSeconds: Number(localRest) || 0 });
+    if (Number(localRest) > 0) onStartTimer(Number(localRest));
     setLocalW(""); 
     setLocalR(""); 
+    setLocalRir('');
     setShowCalc(false);
   };
 
@@ -1032,11 +1063,37 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
           <div className="flex flex-col gap-2">
             {logs.slice(0, 3).map(l => (
               <div key={String(l.id)} className={`flex justify-between items-center p-2 rounded-xl border animate-in zoom-in ${isAdmin ? 'bg-zinc-800/50 border-zinc-700' : p ? '' : 'bg-zinc-50 border-zinc-100'}`} style={p ? { backgroundColor: secondaryBg, borderColor: `${accentHex}20` } : undefined}>
-                <span className={`text-xs font-bold ${isAdmin ? textAccent : p ? '' : textAccent}`} style={p ? { color: accentHex } : undefined}>{String(l.weight)}kg x {String(l.reps)}</span>
-                <div className="flex items-center gap-3"><span className={`text-[9px] ${isAdmin ? 'text-zinc-500' : p ? '' : 'text-zinc-400'}`} style={p ? { color: dimTextHex } : undefined}>{String(l.date)}</span><button onClick={() => { if(window.confirm('¿Borrar esta serie?')) onDeleteLog(safeName, l.id); }} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
+                {editingLogId === l.id ? (
+                  <div className="grid w-full grid-cols-[1fr_1fr_70px_auto_auto] gap-1.5 items-center">
+                    <input aria-label="Peso de la serie" type="number" value={editLogValues.weight} onChange={event => setEditLogValues(prev => ({ ...prev, weight: event.target.value }))} className="min-w-0 rounded bg-zinc-900 px-2 py-1 text-xs text-white" />
+                    <input aria-label="Repeticiones de la serie" type="number" value={editLogValues.reps} onChange={event => setEditLogValues(prev => ({ ...prev, reps: event.target.value }))} className="min-w-0 rounded bg-zinc-900 px-2 py-1 text-xs text-white" />
+                    <input aria-label="RIR de la serie" type="number" min="0" max="10" placeholder="RIR" value={editLogValues.rir} onChange={event => setEditLogValues(prev => ({ ...prev, rir: event.target.value }))} className="min-w-0 rounded bg-zinc-900 px-2 py-1 text-xs text-white" />
+                    <button aria-label="Guardar cambios" onClick={() => { onUpdateLog(safeName, l.id, editLogValues); setEditingLogId(null); }} className="text-emerald-400"><CheckCircle2 size={14}/></button>
+                    <button aria-label="Cancelar edición" onClick={() => setEditingLogId(null)} className="text-zinc-400"><X size={14}/></button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <span className={`text-xs font-bold ${isAdmin ? textAccent : p ? '' : textAccent}`} style={p ? { color: accentHex } : undefined}>{String(l.weight)}kg x {String(l.reps)}</span>
+                      <span className={`block text-[8px] ${isAdmin ? 'text-zinc-500' : 'text-zinc-400'}`}>{l.rir !== undefined && l.rir !== '' ? `RIR ${l.rir}` : 'RIR sin registrar'} · {l.restSeconds ? `${l.restSeconds}s descanso` : 'descanso sin registrar'}</span>
+                    </div>
+                    <div className="flex items-center gap-2"><span className={`text-[9px] ${isAdmin ? 'text-zinc-500' : p ? '' : 'text-zinc-400'}`} style={p ? { color: dimTextHex } : undefined}>{String(l.date)}</span><button aria-label="Editar serie" onClick={() => { setEditingLogId(l.id); setEditLogValues({ weight: String(l.weight), reps: String(l.reps), rir: String(l.rir ?? '') }); }} className="text-amber-500 opacity-70 hover:opacity-100"><Edit3 size={12}/></button><button aria-label="Borrar serie" onClick={() => { if(window.confirm('¿Borrar esta serie?')) onDeleteLog(safeName, l.id); }} className="text-red-400 opacity-60 hover:opacity-100"><Trash2 size={12}/></button></div>
+                  </>
+                )}
               </div>
             ))}
           </div>
+
+          {!isAdmin && canSubmitFeedback && (
+            <ClientExerciseFeedback
+              exerciseName={safeName}
+              dayId={dayId}
+              dayTitle={dayTitle}
+              feedback={Array.isArray(exerciseFeedback) ? exerciseFeedback : []}
+              onSubmit={onAddExerciseFeedback}
+              palette={palette}
+            />
+          )}
 
           {/* NOTAS DE LA MÁQUINA */}
           <div className="pt-4">
@@ -1068,6 +1125,18 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
             <button onClick={() => setShowCalc(!showCalc)} className={`px-3 shrink-0 rounded-xl transition-all shadow-md border ${isAdmin ? (showCalc ? "bg-amber-500 text-black border-amber-500" : "bg-zinc-800 text-zinc-400 border-zinc-700") : p ? "" : (showCalc ? "bg-blue-500 text-white border-blue-500" : "bg-white text-gray-400 border-gray-200")}`} style={p ? (showCalc ? { backgroundColor: accentHex, color: p.dark, borderColor: accentHex } : { backgroundColor: secondaryBg, color: subtextHex, borderColor: `${textHex}20` }) : undefined}><Calculator size={20}/></button>
             <button onClick={handleAdd} className={`px-4 shrink-0 rounded-xl transition-all active:scale-95 shadow-md ${isAdmin ? "bg-amber-500 text-black" : p ? "" : "bg-gray-900 text-white"}`} style={p ? { backgroundColor: accentHex, color: p.dark } : undefined}><PlusCircle size={20}/></button>
           </div>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <label className="text-[8px] font-bold uppercase text-zinc-500">RIR (reps en reserva)
+              <select value={localRir} onChange={event => setLocalRir(event.target.value)} className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-800 p-2 text-xs text-white">
+                <option value="">No registrar</option>{Array.from({ length: 11 }, (_, index) => <option key={index} value={index}>{index === 0 ? '0 · fallo' : index}</option>)}
+              </select>
+            </label>
+            <label className="text-[8px] font-bold uppercase text-zinc-500">Descanso tras serie
+              <select value={localRest} onChange={event => setLocalRest(event.target.value)} className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-800 p-2 text-xs text-white">
+                {[30, 60, 90, 120, 180, 240].map(seconds => <option key={seconds} value={seconds}>{seconds < 60 ? `${seconds}s` : `${seconds / 60} min`}</option>)}
+              </select>
+            </label>
+          </div>
           {showCalc && <PlateDisplay weight={weightToCalc} />}
         </div>
         {safeTip && (
@@ -1085,8 +1154,10 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onDeleteLog, onStartTime
 // COMPONENTE APP
 // ==========================================
 export default function App() {
-  const [db, setDb] = useState(() => safeJSONParse("athlos_coach_db_final", INITIAL_DB));
+  const [db, setDb] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [isFirebaseAdmin, setIsFirebaseAdmin] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isForceReloading, setIsForceReloading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -1104,6 +1175,8 @@ export default function App() {
   const [dailyMotivationalPhrase, setDailyMotivationalPhrase] = useState('La consistencia es la clave del éxito 💪');
   const [allMotivationalPhrases, setAllMotivationalPhrases] = useState([]);
   const { toasts, showSuccess, showError } = useToast();
+  const showErrorRef = useRef(showError);
+  showErrorRef.current = showError;
 
   const [activeTab, setActiveTab] = useState("home");
   const [currentClientId, setCurrentClientId] = useState(null);
@@ -1148,6 +1221,15 @@ export default function App() {
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [chartMode, setChartMode] = useState('weight');
   const [showMotivationalModal, setShowMotivationalModal] = useState(false);
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [clientFollowUpFilter, setClientFollowUpFilter] = useState('all');
+  const [showRoutineHistory, setShowRoutineHistory] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [followUpActionTitle, setFollowUpActionTitle] = useState('');
+  const [followUpActionDueDate, setFollowUpActionDueDate] = useState('');
 
   // Biblioteca de ejercicios personalizados del entrenador
   const [customExercises, setCustomExercises] = useState([]);
@@ -1182,8 +1264,13 @@ export default function App() {
 
   const getClientSummary = (client) => {
     const questionnaire = client?.questionnaire || {};
+    const activeDays = getTrainingDateKeys(client?.logs, client?.trainingDaysHistory).size;
+    const feedback = Array.isArray(client?.exerciseFeedback) ? client.exerciseFeedback : [];
     return {
-      totalDaysTrained: Array.isArray(client?.workoutData?.days) ? client.workoutData.days.length : 0,
+      completedSessions: Number(client?.completedSessionsTotal) || 0,
+      activeDays,
+      plannedDays: Array.isArray(client?.workoutData?.days) ? client.workoutData.days.length : 0,
+      pendingFeedbackCount: feedback.filter(item => item.status === 'new').length,
       objective: String(questionnaire.mainObjective || '—'),
       injuries: String(questionnaire.injuries || '—')
     };
@@ -1195,6 +1282,9 @@ export default function App() {
     const client = db[id];
     if (!client) return;
     setEditingClientId(id);
+    setShowRoutineHistory(false);
+    setFollowUpActionTitle('');
+    setFollowUpActionDueDate('');
     setEditingDayId(null);
     setCurrentClientId(id);
     setIsEditingClientRoutine(true);
@@ -1227,6 +1317,8 @@ export default function App() {
   const pendingWritesRef = useRef({});
   const adminBlurTimerRef = useRef(null);
   const initialSetupDoneRef = useRef(false);
+  const isFirebaseAdminRef = useRef(false);
+  const loggedInUserRef = useRef(null);
 
   // RED Y FIREBASE
   useEffect(() => {
@@ -1258,39 +1350,50 @@ export default function App() {
     };
   }, [loggedInUser]);
 
-  // ✅ Restore session from JWT token on app load (Phase 5 - Session Management)
+  // Firebase Authentication is the sole source of session identity and admin claims.
   useEffect(() => {
-    const restoreSessionFromJWT = async () => {
-      const token = getStoredToken();
-      
-      if (!token) {
-        setLoggedInUser(null);
-        setDataLoaded(true);
-        return;
-      }
-      
-      const { valid, decoded } = await verifyToken(token);
-      if (!valid) {
-        warn("JWT token invalid or expired - clearing session");
-        clearToken();
-        setLoggedInUser(null);
-        setDataLoaded(true);
-        return;
-      }
-      
-      const userId = decoded?.sub;
-      if (userId) {
-        log("Session restored from JWT:", userId);
-        setLoggedInUser(userId);
-      } else {
-        warn("JWT token valid but no userId found");
-        setLoggedInUser(null);
-      }
-      
+    if (!firebaseAuth) {
+      setAuthReady(true);
       setDataLoaded(true);
-    };
-    
-    restoreSessionFromJWT();
+      return undefined;
+    }
+    return onAuthStateChanged(firebaseAuth, async (user) => {
+      if (!user) {
+        isFirebaseAdminRef.current = false;
+        loggedInUserRef.current = null;
+        setLoggedInUser(null);
+        setCurrentClientId(null);
+        setIsFirebaseAdmin(false);
+        setIsAdminMode(false);
+        setDb({});
+        setDataLoaded(true);
+        setAuthReady(true);
+        initialSetupDoneRef.current = false;
+        return;
+      }
+
+      const username = String(user.email || '').split('@')[0].toLowerCase();
+      try {
+        const tokenResult = await user.getIdTokenResult(true);
+        isFirebaseAdminRef.current = tokenResult.claims.admin === true;
+        loggedInUserRef.current = username;
+        setIsFirebaseAdmin(tokenResult.claims.admin === true);
+        setIsAdminMode(tokenResult.claims.admin === true);
+        setLoggedInUser(username);
+        setCurrentClientId(username);
+        setDataLoaded(false);
+      } catch (authError) {
+        isFirebaseAdminRef.current = false;
+        loggedInUserRef.current = username;
+        warn('Could not read Firebase auth claims:', authError.message);
+        setIsFirebaseAdmin(false);
+        setIsAdminMode(false);
+        setLoggedInUser(username);
+        setCurrentClientId(username);
+      } finally {
+        setAuthReady(true);
+      }
+    });
   }, []);
 
   const updateUserInCloud = useCallback((userId, modifierFn) => {
@@ -1298,9 +1401,18 @@ export default function App() {
     // Protege contra onSnapshot sobreescribiendo datos antes de que el callback de setDb se ejecute
     pendingWritesRef.current[userId] = Date.now();
     setDb(prev => {
-      const current = prev[userId] || INITIAL_DB[userId] || { workoutData: { days: [] }, logs: {}, notes: [] };
+      const current = prev[userId] || { username: userId, workoutData: { days: [] }, logs: {}, notes: [] };
       const cloned = structuredClone(current);
-      const next = modifierFn(cloned);
+      let next = modifierFn(cloned);
+      const routineChanged = JSON.stringify(current.workoutData) !== JSON.stringify(next.workoutData);
+      if (routineChanged && isFirebaseAdminRef.current && userId !== loggedInUserRef.current && Array.isArray(current.workoutData?.days)) {
+        const previousVersion = {
+          id: Date.now(),
+          savedAt: new Date().toISOString(),
+          days: structuredClone(current.workoutData.days)
+        };
+        next = { ...next, routineHistory: [previousVersion, ...(Array.isArray(current.routineHistory) ? current.routineHistory : [])].slice(0, 10) };
+      }
       
       // Crear hash simple para detectar si es la misma actualización
       const nextStr = JSON.stringify(next);
@@ -1321,6 +1433,7 @@ export default function App() {
             }, 3000);
           }).catch((writeErr) => {
             err('❌ Firestore write error for', userId, ':', writeErr.message);
+            showErrorRef.current('No se pudieron guardar los cambios. Comprueba la conexión e inténtalo de nuevo.');
             setTimeout(() => {
               delete pendingWritesRef.current[userId];
             }, 3000);
@@ -1336,6 +1449,65 @@ export default function App() {
       return { ...prev, [userId]: next };
     });
   }, []);
+
+  const updateFollowUpActions = async (clientId, transform, successMessage) => {
+    if (!isFirebaseAdmin || !clientId || !db_cloud) {
+      showError('No se pudo guardar el seguimiento. Comprueba el acceso de administrador y la conexión.');
+      return false;
+    }
+    const currentActions = Array.isArray(db[clientId]?.followUpActions) ? db[clientId].followUpActions : [];
+    const nextActions = transform(currentActions);
+    setIsSyncing(true);
+    try {
+      await setDoc(doc(db_cloud, ADMIN_FOLLOWUPS_COLLECTION, clientId), {
+        actions: nextActions,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setDb(previous => ({
+        ...previous,
+        [clientId]: { ...previous[clientId], followUpActions: nextActions }
+      }));
+      showSuccess(successMessage);
+      return true;
+    } catch (error) {
+      warn('Could not save admin follow-up actions:', error.message);
+      showError('No se pudo guardar el seguimiento. Inténtalo de nuevo.');
+      return false;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const addFollowUpAction = async (clientId) => {
+    const title = sanitizeInput(followUpActionTitle, 160).trim();
+    if (!isFirebaseAdmin || !clientId || !title) {
+      showError('Escribe una acción concreta antes de guardarla.');
+      return;
+    }
+    const dueDate = followUpActionDueDate;
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      showError('Selecciona una fecha válida.');
+      return;
+    }
+    const action = { id: Date.now(), title, dueDate, status: 'pending', createdAt: new Date().toISOString() };
+    const saved = await updateFollowUpActions(clientId, actions => [action, ...actions].slice(0, 50), 'Seguimiento añadido');
+    if (saved) {
+      setFollowUpActionTitle('');
+      setFollowUpActionDueDate('');
+    }
+  };
+
+  const toggleFollowUpAction = (clientId, actionId) => {
+    if (!isFirebaseAdmin) return;
+    updateFollowUpActions(clientId, actions => actions.map(action => action.id === actionId
+        ? { ...action, status: action.status === 'completed' ? 'pending' : 'completed', completedAt: action.status === 'completed' ? null : new Date().toISOString() }
+        : action), 'Estado del seguimiento actualizado');
+  };
+
+  const deleteFollowUpAction = (clientId, actionId) => {
+    if (!isFirebaseAdmin) return;
+    updateFollowUpActions(clientId, actions => actions.filter(action => action.id !== actionId), 'Seguimiento eliminado');
+  };
 
   // NEW: Save color palette preference to user's profile
   const saveUserColorPreference = useCallback((userId, paletteId) => {
@@ -1360,16 +1532,20 @@ export default function App() {
     
     // Save to localStorage and cloud
     localStorage.setItem('athlos_motivational_phrases', JSON.stringify(updated));
-    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+      if (isFirebaseAdmin) {
       updateUserInCloud(loggedInUser, u => ({
         ...u,
         motivationalPhrases: updated,
         currentMotivationalPhrase: newPhrase.text
       }));
+        if (db_cloud) {
+          setDoc(doc(db_cloud, 'athlos_public', 'config'), { currentMotivationalPhrase: newPhrase.text, updatedAt: new Date().toISOString() }, { merge: true })
+            .catch(writeError => warn('Motivational phrase sync failed:', writeError.message));
+        }
     }
     
     showSuccess('Frase motivadora guardada ✨');
-  }, [allMotivationalPhrases, loggedInUser, updateUserInCloud, showSuccess]);
+  }, [allMotivationalPhrases, isFirebaseAdmin, loggedInUser, updateUserInCloud, showSuccess]);
 
   // NEW: Delete motivational phrase
   const deleteMotivationalPhrase = useCallback((idx) => {
@@ -1402,25 +1578,25 @@ export default function App() {
         updated = [newExercise, ...prev];
       }
       localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
-      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+      if (isFirebaseAdmin) {
         updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
       }
       showSuccess(exists > -1 ? 'Ejercicio actualizado en tu biblioteca 📚' : 'Ejercicio guardado en tu biblioteca 📚');
       return updated;
     });
-  }, [loggedInUser, updateUserInCloud, showSuccess]);
+  }, [isFirebaseAdmin, loggedInUser, updateUserInCloud, showSuccess]);
 
   const deleteCustomExercise = useCallback((idx) => {
     setCustomExercises(prev => {
       const updated = prev.filter((_, i) => i !== idx);
       localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
-      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+      if (isFirebaseAdmin) {
         updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
       }
       return updated;
     });
     showSuccess('Ejercicio eliminado de la biblioteca');
-  }, [loggedInUser, updateUserInCloud, showSuccess]);
+  }, [isFirebaseAdmin, loggedInUser, updateUserInCloud, showSuccess]);
 
   const saveQuestionnaire = useCallback(async (questionnaireData) => {
     if (!loggedInUser) return;
@@ -1470,6 +1646,7 @@ export default function App() {
     updateUserInCloud(loggedInUser, u => ({
       ...u,
       questionnaire: payload,
+      lastActivityAt: now,
       questionnaireRequired: false,
       questionnaireSubmittedAt: now,
       questionnaireUpdatedAt: now,
@@ -1486,12 +1663,12 @@ export default function App() {
       const updated = [...prev];
       updated[idx] = { ...updated[idx], ...updatedData, name: sanitizeInput(updatedData.name || updated[idx].name, 50) };
       localStorage.setItem('athlos_custom_exercises', JSON.stringify(updated));
-      if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+      if (isFirebaseAdmin) {
         updateUserInCloud(loggedInUser, u => ({ ...u, customExercises: updated }));
       }
       return updated;
     });
-  }, [loggedInUser, updateUserInCloud]);
+  }, [isFirebaseAdmin, loggedInUser, updateUserInCloud]);
 
   // Liberar bloqueo de login cuando expira
   useEffect(() => {
@@ -1506,170 +1683,70 @@ export default function App() {
     return () => clearInterval(timer);
   }, [loginLockedUntil]);
 
-  // CARGA DE DATOS DE FIREBASE
-  // OPTIMIZACIÓN: Clientes escuchan solo su documento + entrenador (2 reads por cambio)
-  // Admin escucha toda la colección solo cuando está activo
+  // Authenticated users only: admins may list profiles; clients may fetch only their own.
   useEffect(() => {
-    if (!loggedInUser) {
+    if (!loggedInUser || !db_cloud) {
+      setDb({});
       setDataLoaded(true);
-      return;
+      return undefined;
     }
-    // Reset dataLoaded para que el check de seguridad espere a onSnapshot
+    setDb({});
     setDataLoaded(false);
-    if (!db_cloud) {
-      err('⚠️ Firestore not available, using initial data only');
-      setDb(INITIAL_DB);
-      setDataLoaded(true);
-      return;
-    }
 
-    const isCoach = loggedInUser === 'entrenador' || loggedInUser === 'coach';
-
-    if (isCoach) {
-      // ADMIN: escucha toda la colección (necesita ver todos los clientes)
-      const unsub = onSnapshot(collection(db_cloud, COLLECTION_NAME), (snap) => {
+    if (isFirebaseAdmin) {
+      let clientSnapshot = null;
+      let followUpSnapshot = null;
+      const publishAdminData = () => {
+        if (!clientSnapshot || !followUpSnapshot) return;
         const cloud = {};
-        snap.forEach(d => { cloud[d.id] = d.data(); });
-        
-        const isFromCache = snap.metadata.fromCache;
-        const deletedList = cloud['_deleted_users']?.ids || [];
-        delete cloud['_deleted_users'];
-        
-        if (Object.keys(cloud).length === 0) {
-          if (isFromCache) {
-            log('⏳ Cache vacía, esperando datos del servidor...');
-            setDb(INITIAL_DB);
-            setDataLoaded(true);
-            return;
-          }
-          log('🆕 Colección vacía confirmada por servidor, inicializando...');
-          Object.keys(INITIAL_DB).forEach(k => {
-            if (!deletedList.includes(k)) {
-              setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync error:", syncErr));
-              cloud[k] = INITIAL_DB[k];
-            }
-          });
-        } else {
-          if (!isFromCache) {
-            Object.keys(INITIAL_DB).forEach(k => {
-              if (deletedList.includes(k)) return;
-              if (!cloud[k]) {
-                setDoc(doc(db_cloud, COLLECTION_NAME, k), INITIAL_DB[k]).catch(syncErr => warn("Sync missing user error:", syncErr));
-                cloud[k] = INITIAL_DB[k];
-              } else if (!cloud[k].workoutData || !Array.isArray(cloud[k].workoutData.days)) {
-                // Reparar estructura local, NO escribir days vacío de vuelta a Firestore (destructivo)
-                cloud[k].workoutData = cloud[k].workoutData || {};
-                if (!Array.isArray(cloud[k].workoutData.days)) {
-                  const d = cloud[k].workoutData.days;
-                  cloud[k].workoutData.days = (d && typeof d === 'object') ? Object.values(d) : [];
-                }
-              }
-            });
-
-            // Migración one-shot: actualizar datos de INITIAL_DB si la versión cambió
-            const migKey = `athlos_migration_${DATA_MIGRATION_VERSION}`;
-            if (!localStorage.getItem(migKey)) {
-              localStorage.setItem(migKey, Date.now().toString());
-              Object.keys(INITIAL_DB).forEach(k => {
-                if (deletedList.includes(k) || !cloud[k]) return;
-                const cloudDays = Array.isArray(cloud[k].workoutData?.days) ? cloud[k].workoutData.days : [];
-                const initialDays = Array.isArray(INITIAL_DB[k].workoutData?.days) ? INITIAL_DB[k].workoutData.days : [];
-                // Comparar contenido: migrar si INITIAL_DB tiene más días O si los títulos de los días cambiaron
-                const cloudTitles = cloudDays.map(d => d.title).sort().join('|');
-                const initialTitles = initialDays.map(d => d.title).sort().join('|');
-                const needsMigration = initialDays.length > cloudDays.length || (initialDays.length >= cloudDays.length && cloudTitles !== initialTitles);
-                if (needsMigration) {
-                  // Preservar datos del usuario: logs, notes, userStats, color, preferredPaletteId, etc.
-                  const updated = {
-                    ...cloud[k],
-                    workoutData: INITIAL_DB[k].workoutData,
-                    subtitle: INITIAL_DB[k].subtitle,
-                    advice: INITIAL_DB[k].advice
-                  };
-                  setDoc(doc(db_cloud, COLLECTION_NAME, k), updated).catch(syncErr => warn("Migration error:", syncErr));
-                  cloud[k] = updated;
-                  log(`📦 Migrado ${k}: ${cloudDays.length} días → ${initialDays.length} días (títulos cambiados)`);
-                }
-              });
-            }
-          }
-        }
-        // Usar functional update para respetar escrituras locales pendientes
-        setDb(prev => {
-          const merged = { ...cloud };
-          // Preservar datos locales de usuarios con escrituras pendientes o recientes
-          Object.keys(pendingWritesRef.current).forEach(userId => {
-            const age = Date.now() - pendingWritesRef.current[userId];
-            if (age > 10000) {
-              // Escritura pendiente obsoleta (>10s), limpiar
-              delete pendingWritesRef.current[userId];
-            } else if (prev[userId]) {
-              merged[userId] = prev[userId];
-            }
-          });
-          return merged;
+        clientSnapshot.forEach(item => { if (item.id !== '_deleted_users') cloud[item.id] = item.data(); });
+        followUpSnapshot.forEach(item => {
+          if (cloud[item.id]) cloud[item.id].followUpActions = Array.isArray(item.data().actions) ? item.data().actions : [];
         });
+        setDb(cloud);
         setDataLoaded(true);
-      }, (snapErr) => {
-        warn("Firebase Snapshot Error:", snapErr);
-        setDb(INITIAL_DB);
+      };
+      const handleAdminSnapshotError = (snapshotError) => {
+        warn('Admin Firestore snapshot denied or failed:', snapshotError.message);
+        setDb({});
         setDataLoaded(true);
-      });
-      return () => unsub();
-    } else {
-      // CLIENTE: escucha solo su propio documento + el del entrenador (frases motivacionales)
-      // Esto reduce lecturas de N docs × cada cambio → 2 docs × cada cambio
-      const unsubUser = onSnapshot(doc(db_cloud, COLLECTION_NAME, loggedInUser), (snap) => {
-        if (snap.exists()) {
-          const userData = snap.data();
-          // Migración client-side: si INITIAL_DB tiene datos nuevos para este usuario, actualizar
-          const migKeyClient = `athlos_migration_client_${DATA_MIGRATION_VERSION}_${loggedInUser}`;
-          if (!localStorage.getItem(migKeyClient) && INITIAL_DB[loggedInUser] && !snap.metadata.fromCache) {
-            localStorage.setItem(migKeyClient, Date.now().toString());
-            const cloudDays = Array.isArray(userData.workoutData?.days) ? userData.workoutData.days : [];
-            const initialDays = Array.isArray(INITIAL_DB[loggedInUser].workoutData?.days) ? INITIAL_DB[loggedInUser].workoutData.days : [];
-            const cloudTitles = cloudDays.map(d => d.title).sort().join('|');
-            const initialTitles = initialDays.map(d => d.title).sort().join('|');
-            if (initialDays.length > cloudDays.length || (initialDays.length >= cloudDays.length && cloudTitles !== initialTitles)) {
-              const updated = { ...userData, workoutData: INITIAL_DB[loggedInUser].workoutData, subtitle: INITIAL_DB[loggedInUser].subtitle, advice: INITIAL_DB[loggedInUser].advice };
-              setDoc(doc(db_cloud, COLLECTION_NAME, loggedInUser), updated).catch(syncErr => warn("Client migration error:", syncErr));
-              setDb(prev => ({ ...prev, [loggedInUser]: updated }));
-              setDataLoaded(true);
-              log(`📦 Migración cliente ${loggedInUser}: títulos actualizados`);
-              return;
-            }
-          }
-          setDb(prev => ({ ...prev, [loggedInUser]: userData }));
-        } else {
-          // User doc doesn't exist in Firestore, check INITIAL_DB
-          const initial = INITIAL_DB[loggedInUser];
-          if (initial) {
-            setDoc(doc(db_cloud, COLLECTION_NAME, loggedInUser), initial).catch(() => {});
-            setDb(prev => ({ ...prev, [loggedInUser]: initial }));
-          }
-        }
-        setDataLoaded(true);
-      }, (snapErr) => {
-        warn("User snapshot error:", snapErr);
-        const fallback = INITIAL_DB[loggedInUser];
-        if (fallback) setDb(prev => ({ ...prev, [loggedInUser]: fallback }));
-        setDataLoaded(true);
-      });
-
-      // Escuchar doc del entrenador para frases motivacionales en tiempo real
-      const unsubCoach = onSnapshot(doc(db_cloud, COLLECTION_NAME, 'entrenador'), (snap) => {
-        if (snap.exists()) {
-          const coachData = snap.data();
-          setDb(prev => ({ ...prev, entrenador: coachData }));
-          if (coachData.currentMotivationalPhrase) {
-            setDailyMotivationalPhrase(coachData.currentMotivationalPhrase);
-          }
-        }
-      }, () => { /* ignore coach snapshot errors for clients */ });
-
-      return () => { unsubUser(); unsubCoach(); };
+        showErrorRef.current('No se pudieron cargar los clientes. Verifica el rol de administrador en Firebase.');
+      };
+      const unsubClients = onSnapshot(collection(db_cloud, COLLECTION_NAME), snap => {
+        clientSnapshot = snap;
+        publishAdminData();
+      }, handleAdminSnapshotError);
+      const unsubFollowUps = onSnapshot(collection(db_cloud, ADMIN_FOLLOWUPS_COLLECTION), snap => {
+        followUpSnapshot = snap;
+        publishAdminData();
+      }, handleAdminSnapshotError);
+      return () => { unsubClients(); unsubFollowUps(); };
     }
-  }, [loggedInUser]);
+
+    const ownProfileRef = doc(db_cloud, COLLECTION_NAME, loggedInUser);
+    const publicConfigRef = doc(db_cloud, 'athlos_public', 'config');
+    const unsubUser = onSnapshot(ownProfileRef, (snap) => {
+      const currentUid = firebaseAuth?.currentUser?.uid;
+      if (!snap.exists() || (snap.data().authUid && snap.data().authUid !== currentUid)) {
+        setDb({});
+        setDataLoaded(true);
+        showErrorRef.current('No se encontró un perfil asociado a esta cuenta. Contacta con el entrenador.');
+        return;
+      }
+      setDb(prev => ({ ...prev, [loggedInUser]: snap.data() }));
+      setDataLoaded(true);
+    }, (snapshotError) => {
+      warn('Client Firestore snapshot denied or failed:', snapshotError.message);
+      setDb({});
+      setDataLoaded(true);
+      showErrorRef.current('No se pudieron cargar tus datos de forma segura.');
+    });
+    const unsubPublicConfig = onSnapshot(publicConfigRef, (snap) => {
+      const phrase = snap.data()?.currentMotivationalPhrase;
+      if (phrase) setDailyMotivationalPhrase(phrase);
+    }, () => {});
+    return () => { unsubUser(); unsubPublicConfig(); };
+  }, [isFirebaseAdmin, loggedInUser]);
 
   // Sync motivacional phrase in real-time for clients (handled inside onSnapshot for client mode)
 
@@ -1689,7 +1766,7 @@ export default function App() {
       if (!initialSetupDoneRef.current) {
         initialSetupDoneRef.current = true;
         setCurrentClientId(loggedInUser);
-        setIsAdminMode(loggedInUser === 'entrenador' || loggedInUser === 'coach');
+        setIsAdminMode(isFirebaseAdmin);
       
         // Load user's color preference
         const saved = localStorage.getItem(`athlos_palette_${loggedInUser}`);
@@ -1700,7 +1777,7 @@ export default function App() {
         }
       
         // Load motivational phrases
-        const isCoach = loggedInUser === 'entrenador' || loggedInUser === 'coach';
+        const isCoach = isFirebaseAdmin;
         if (isCoach) {
           const savedPhrases = localStorage.getItem('athlos_motivational_phrases');
           if (savedPhrases) {
@@ -1726,7 +1803,7 @@ export default function App() {
         }
 
         // Cargar biblioteca de ejercicios personalizados del entrenador
-        if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+        if (isFirebaseAdmin) {
           const savedCustomEx = localStorage.getItem('athlos_custom_exercises');
           if (savedCustomEx) {
             try {
@@ -1751,7 +1828,7 @@ export default function App() {
         }
 
         // Cuestionario para clientes nuevos y onboarding posterior
-        if (loggedInUser !== 'entrenador' && loggedInUser !== 'coach') {
+        if (!isFirebaseAdmin) {
                 const currentUser = db[loggedInUser];
                 const clientLogs = currentUser?.logs || {};
                 const hasAnyLogs = Object.values(clientLogs).some(arr => Array.isArray(arr) && arr.length > 0);
@@ -1768,136 +1845,46 @@ export default function App() {
         }
       }
     }
-  }, [loggedInUser, db]);
-
-  // SOLUCIÓN DE SEGURIDAD CONTRA BUCLES INFINITOS Y PANTALLA EN BLANCO
-  // Solo expulsar si onSnapshot ya cargó datos (dataLoaded=true) y el usuario no existe en Firestore
-  useEffect(() => {
-    if (dataLoaded && loggedInUser && currentClientId) {
-      const userExists = Object.prototype.hasOwnProperty.call(db, currentClientId);
-      
-      // Verificar que db tiene datos de Firestore (no solo INITIAL_DB)
-      // Si db tiene más keys que INITIAL_DB o si hay entrenador con datos cloud, los datos ya cargaron
-      if (!userExists) {
-        // Dar tiempo extra para que onSnapshot cargue en caso de red lenta
-        const timer = setTimeout(async () => {
-          // Verificar directamente en Firestore antes de expulsar
-          let existsInCloud = false;
-          if (db_cloud && navigator.onLine) {
-            try {
-              const snap = await getDoc(doc(db_cloud, COLLECTION_NAME, currentClientId));
-              existsInCloud = snap.exists();
-            } catch (e) { /* ignore */ }
-          }
-          if (!existsInCloud && !Object.prototype.hasOwnProperty.call(db, currentClientId)) {
-            clearToken();
-            initialSetupDoneRef.current = false;
-            setLoggedInUser(null);
-            setIsAdminMode(false);
-            localStorage.removeItem("athlos_session_final");
-            sessionStorage.removeItem("athlos_session_final");
-            setDataLoaded(false);
-          }
-        }, 3000);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [dataLoaded, db, currentClientId, loggedInUser]);
+  }, [loggedInUser, db, isFirebaseAdmin]);
 
   const authenticate = async () => {
     if (isAuthenticating) return;
-    // Rate limiting: bloquear después de 5 intentos fallidos por 5 minutos
     if (loginLockedUntil && Date.now() < loginLockedUntil) {
       const minutesLeft = Math.ceil((loginLockedUntil - Date.now()) / 60000);
       setLoginError(`Demasiados intentos. Intenta en ${minutesLeft} minuto(s)`);
       return;
     }
-    
     setLoginError("");
     const input = loginUser.toLowerCase().trim();
-    if (!input) return;
+    if (!/^[a-z0-9_-]{3,50}$/.test(input) || !firebaseAuth) {
+      setLoginError('Introduce un usuario válido.');
+      return;
+    }
     setIsAuthenticating(true);
     try {
-      let user = null;
-      // 🔐 Siempre obtener datos más recientes de Firestore al estar online
-      // Usar getDocFromServer para evitar datos en caché obsoletos (contraseñas cambiadas)
-      if (navigator.onLine && db_cloud) {
-         try {
-           const snap = await getDocFromServer(doc(db_cloud, COLLECTION_NAME, input));
-           if (snap.exists()) user = snap.data();
-         } catch (serverErr) {
-           // Si falla el servidor, intentar con caché
-           warn("Server fetch failed, trying cache:", serverErr.message);
-           try {
-             const snapCache = await getDoc(doc(db_cloud, COLLECTION_NAME, input));
-             if (snapCache.exists()) user = snapCache.data();
-           } catch (cacheErr) {
-             warn("Cache fetch also failed:", cacheErr.message);
-           }
-         }
+      await setPersistence(firebaseAuth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+      await signInWithEmailAndPassword(firebaseAuth, `${input}${AUTH_EMAIL_DOMAIN}`, loginPass);
+      setLoginAttempts(0);
+      setLoginLockedUntil(null);
+      setLoginPass('');
+    } catch (error) {
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      if (newAttempts >= LOGIN_MAX_ATTEMPTS) {
+        const lockDuration = LOGIN_LOCKOUT_BASE_MS * Math.min(2 ** Math.floor(newAttempts / LOGIN_MAX_ATTEMPTS - 1), 6);
+        setLoginLockedUntil(Date.now() + lockDuration);
+        setLoginError(`Demasiados intentos. Intenta de nuevo en ${Math.ceil(lockDuration / 60000)} minuto(s).`);
+      } else if (['auth/user-not-found', 'auth/invalid-credential'].includes(error.code)) {
+        setLoginError('Usuario o contraseña incorrectos. Si tu cuenta es anterior a esta actualización, solicita la migración al entrenador.');
+      } else if (error.code === 'auth/wrong-password') {
+        setLoginError(`Usuario o contraseña incorrectos (${newAttempts}/${LOGIN_MAX_ATTEMPTS})`);
+      } else {
+        setLoginError('No se pudo iniciar sesión. Comprueba la conexión e inténtalo de nuevo.');
       }
-      // Fallback a datos locales si Firestore no disponible
-      if (!user) {
-        user = db[input] || INITIAL_DB[input];
-      }
-      
-      // 🔐 Secure password verification using bcryptjs
-      // Soporta contraseñas en texto plano (legacy) y las auto-migra a bcrypt
-      let passwordMatch = false;
-      if (user) {
-        const isBcryptHash = user.password && user.password.startsWith('$2');
-        if (isBcryptHash) {
-          passwordMatch = await verifyPassword(loginPass, user.password);
-        } else {
-          // Contraseña legacy en texto plano — comparar directamente
-          passwordMatch = (loginPass === user.password);
-          // Auto-migrar a bcrypt si coincide
-          if (passwordMatch && db_cloud) {
-            try {
-              const newHash = await hashPassword(loginPass);
-              await setDoc(doc(db_cloud, COLLECTION_NAME, input), { ...user, password: newHash });
-              log("🔐 Contraseña migrada a bcrypt para:", input);
-            } catch (migrateErr) {
-              warn("⚠️ No se pudo migrar contraseña:", migrateErr.message);
-            }
-          }
-        }
-      }
-      
-      if (user && passwordMatch) {
-        setLoginAttempts(0);
-        setLoginLockedUntil(null);
-        // Admin if username is 'entrenador' or loaded from DB with admin role
-        const isAdmin = input === 'entrenador';
-        setLoggedInUser(input);
-        setCurrentClientId(input);
-        setIsAdminMode(isAdmin);
-        
-        // 🔐 Generate and store JWT token
-        try {
-          const tokenHours = keepLoggedIn ? TOKEN_HOURS_KEEP : TOKEN_HOURS_DEFAULT;
-          const token = await generateToken(input, tokenHours);
-          storeToken(token, keepLoggedIn);
-          setLoginError(""); // Clear any error
-        } catch (tokenError) {
-          warn("⚠️ Token generation warning:", tokenError.message);
-          // Fallback: still allow login even if token fails
-        }
-      } else { 
-        const newAttempts = loginAttempts + 1;
-        setLoginAttempts(newAttempts);
-        if (newAttempts >= LOGIN_MAX_ATTEMPTS) {
-          // Bloqueo exponencial: 5min, 15min, 30min según número de bloqueos consecutivos
-          const lockMultiplier = Math.min(Math.pow(2, Math.floor(newAttempts / LOGIN_MAX_ATTEMPTS) - 1), 6);
-          const lockDuration = LOGIN_LOCKOUT_BASE_MS * lockMultiplier;
-          const lockMinutes = Math.ceil(lockDuration / 60000);
-          setLoginLockedUntil(Date.now() + lockDuration);
-          setLoginError(`Cuenta bloqueada por ${lockMinutes} minuto(s) tras ${newAttempts} intentos fallidos`);
-        } else {
-          setLoginError(`Usuario o contraseña incorrectos (${newAttempts}/${LOGIN_MAX_ATTEMPTS})`);
-        }
-      }
-    } catch (e) { setLoginError("Error de red: " + e.message); } finally { setIsAuthenticating(false); }
+      warn('Firebase sign-in failed:', error.code || error.message);
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const changePassword = async () => {
@@ -1919,35 +1906,12 @@ export default function App() {
       return;
     }
     
-    // Verificar contraseña actual 🔐 using bcryptjs
-    const currentUser = db[loggedInUser] || INITIAL_DB[loggedInUser];
-    if (!currentUser) {
-      setPwdError("Usuario no encontrado");
-      return;
-    }
-    
-    const isCurrentValid = await verifyPassword(pwdCurrent, currentUser.password);
-    if (!isCurrentValid) {
-      setPwdError("Contraseña actual incorrecta");
-      return;
-    }
-    
-    // Hash nueva contraseña antes de guardar
     try {
-      const newHash = await hashPassword(pwdNew);
-      // Escribir directamente a Firestore y ESPERAR confirmación
-      if (db_cloud && navigator.onLine) {
-        const userRef = doc(db_cloud, COLLECTION_NAME, loggedInUser);
-        const currentSnap = await getDocFromServer(userRef);
-        if (currentSnap.exists()) {
-          await setDoc(userRef, { ...currentSnap.data(), password: newHash });
-        }
-      }
-      // Actualizar estado local
-      setDb(prev => ({
-        ...prev,
-        [loggedInUser]: { ...(prev[loggedInUser] || {}), password: newHash }
-      }));
+      const user = firebaseAuth?.currentUser;
+      if (!user?.email) throw new Error('Sesión no disponible');
+      const credential = EmailAuthProvider.credential(user.email, pwdCurrent);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, pwdNew);
       setPwdError("");
       setPwdSuccess("Contraseña actualizada correctamente ✓");
       setTimeout(() => {
@@ -1958,8 +1922,12 @@ export default function App() {
         setShowPasswordModal(false);
       }, 2000);
     } catch (error) {
-      err("Error hashing password:", error);
-      setPwdError("Error al actualizar contraseña. Intenta de nuevo.");
+      warn('Password update failed:', error.code || error.message);
+      setPwdError(error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential'
+        ? 'La contraseña actual es incorrecta.'
+        : error.code === 'auth/requires-recent-login'
+          ? 'Vuelve a iniciar sesión y repite el cambio.'
+          : 'Error al actualizar la contraseña. Intenta de nuevo.');
     }
   };
 
@@ -1972,11 +1940,7 @@ export default function App() {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = setTimeout(() => {
         initialSetupDoneRef.current = false;
-        setLoggedInUser(null);
-        setIsAdminMode(false);
-        clearToken();
-        localStorage.removeItem("athlos_session_final");
-        sessionStorage.removeItem("athlos_session_final");
+        signOut(firebaseAuth).catch(() => {});
         sessionStorage.removeItem("athlos_session_start");
         setDataLoaded(false);
         showError('Sesión cerrada por inactividad');
@@ -1994,18 +1958,12 @@ export default function App() {
   const signOutUser = () => {
     if (!window.confirm('¿Seguro que quieres cerrar sesión?')) return;
     initialSetupDoneRef.current = false;
-    setLoggedInUser(null); 
-    setIsAdminMode(false); 
     setIsEditingClientRoutine(false);
     setEditingClientId(null);
     setEditingDayId(null);
     setSelectedDay(null);
     setActiveTab("home");
-    // 🔐 Clear JWT token instead of plaintext session
-    clearToken();
-    // Clear ALL user-specific storage
-    localStorage.removeItem("athlos_session_final"); 
-    sessionStorage.removeItem("athlos_session_final");
+    signOut(firebaseAuth).catch(error => showError('No se pudo cerrar sesión: ' + error.message));
     sessionStorage.removeItem("athlos_session_start");
     // Limpiar datos específicos del usuario
     const keysToRemove = [];
@@ -2024,6 +1982,39 @@ export default function App() {
     updateUserInCloud(targetClientId, u => ({ ...u, workoutData: { ...u.workoutData, days: (Array.isArray(u.workoutData?.days) ? u.workoutData.days : []).map(d => d.id === id ? {...d, [field]: sanitizeInput(val)} : d) } }));
   };
   const modifyClientData = (field, val) => updateUserInCloud(currentClientId, u => ({ ...u, [field]: sanitizeInput(val) }));
+  const addExerciseToDay = (exercise, saveToLibrary = false) => {
+    const targetClientId = editingClientId || currentClientId;
+    const safeExercise = {
+      ...exercise,
+      name: sanitizeInput(String(exercise?.name || '').trim(), 50),
+      s: safeParseSerries(exercise?.s),
+      mus: sanitizeInput(exercise?.mus || '', 30),
+      tip: sanitizeInput(exercise?.tip || '', 200),
+      yt: exercise?.yt ? sanitizeUrl(exercise.yt) : '',
+      img: exercise?.img || ''
+    };
+
+    if (!safeExercise.name) {
+      showError('Escribe el nombre del ejercicio antes de añadirlo.');
+      return false;
+    }
+    if (!isFirebaseAdmin || !targetClientId || editingDayId === null) {
+      showError('Selecciona un día de rutina válido antes de añadir el ejercicio.');
+      return false;
+    }
+    if (!appendExerciseToWorkoutDay(db[targetClientId], editingDayId, safeExercise)) {
+      showError('No se encontró el día seleccionado. Vuelve a abrir la rutina e inténtalo de nuevo.');
+      return false;
+    }
+
+    updateUserInCloud(targetClientId, user => appendExerciseToWorkoutDay(user, editingDayId, safeExercise) || user);
+    if (saveToLibrary) {
+      saveCustomExercise(safeExercise);
+    } else {
+      showSuccess('Ejercicio agregado ✓');
+    }
+    return true;
+  };
   const modifyExerciseData = (dayId, idx, field, val) => {
     const targetClientId = editingClientId || currentClientId;
     updateUserInCloud(targetClientId, u => { 
@@ -2060,15 +2051,23 @@ export default function App() {
   
   const removeExerciseFromDay = (dayId, exIdx) => {
     const targetClientId = editingClientId || currentClientId;
-    updateUserInCloud(targetClientId, u => { 
-      const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; 
-      const dIdx = days.findIndex(d => d.id === dayId); 
-      if (dIdx > -1) {
-        days[dIdx].exercises = (Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []).filter((_, i) => i !== exIdx);
-      }
-      return { ...u, workoutData: { ...u.workoutData, days } }; 
-    });
-    showSuccess("Ejercicio borrado");
+    const exercise = db[targetClientId]?.workoutData?.days
+      ?.find(day => String(day.id) === String(dayId))
+      ?.exercises?.[exIdx];
+    if (!isFirebaseAdmin || !exercise) {
+      showError('No se encontró el ejercicio seleccionado. Actualiza la rutina e inténtalo de nuevo.');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar "${exercise.name}" de este día?`)) return;
+    const updatedProfile = removeExerciseFromWorkoutDay(db[targetClientId], dayId, exIdx);
+    if (!updatedProfile) {
+      showError('No se pudo eliminar el ejercicio. Actualiza la rutina e inténtalo de nuevo.');
+      return;
+    }
+
+    updateUserInCloud(targetClientId, user => removeExerciseFromWorkoutDay(user, dayId, exIdx) || user);
+    setAdminEditingExIdx(current => current === exIdx ? null : current > exIdx ? current - 1 : current);
+    showSuccess('Ejercicio eliminado ✓');
   };
 
   const removeDayFromRoutine = (dayId) => {
@@ -2152,17 +2151,22 @@ export default function App() {
   };
 
   const removeClientAccount = async () => {
-    if (currentClientId === 'entrenador' || currentClientId === 'coach') return;
+    if (isFirebaseAdmin || !firebaseFunctions) return;
     setIsSyncing(true);
-    await trackDeletedUser(currentClientId);
-    if (db_cloud) await deleteDoc(doc(db_cloud, COLLECTION_NAME, currentClientId)).catch(()=>{});
-    setDb(prev => { const n = {...prev}; delete n[currentClientId]; return n; });
-    setCurrentClientId('entrenador'); setIsSyncing(false);
-    showSuccess("Cliente eliminado");
+    try {
+      await httpsCallable(firebaseFunctions, 'deleteOwnClientAccount')({});
+      await signOut(firebaseAuth);
+      setDb({});
+      showSuccess('Cuenta eliminada');
+    } catch (error) {
+      setIsSyncing(false);
+      showError('No se pudo eliminar la cuenta. Inténtalo de nuevo.');
+      warn('Self account deletion failed:', error.message);
+    }
   };
 
   const deleteClientFromAdmin = async (clientId) => {
-    if (clientId === 'entrenador' || clientId === 'coach') {
+    if (!isFirebaseAdmin || clientId === loggedInUser) {
       showError("No puedes eliminar el admin");
       return;
     }
@@ -2180,11 +2184,10 @@ export default function App() {
         setIsEditingClientRoutine(false);
       }
       
-      // Registrar como eliminado y luego borrar de Firebase
+      // Registrar como eliminado y borrar perfil + cuenta Auth desde backend confiable.
       await trackDeletedUser(clientId);
-      if (db_cloud && navigator.onLine) {
-        await deleteDoc(doc(db_cloud, COLLECTION_NAME, clientId)).catch(()=>{});
-      }
+      if (!firebaseFunctions) throw new Error('Cloud Functions no está disponible');
+      await httpsCallable(firebaseFunctions, 'adminDeleteClient')({ username: clientId });
       
       // FINALMENTE eliminar del estado local
       setDb(prev => { 
@@ -2279,7 +2282,7 @@ export default function App() {
     setSyncPreviewData(null);
   };
 
-  const addLogRecord = useCallback((exName, weight, reps) => {
+  const addLogRecord = useCallback((exName, weight, reps, metadata = {}) => {
     // 🔐 VALIDATE input before storing
     const validatedWeight = safeParseWeight(weight);
     const validatedReps = safeParseReps(reps);
@@ -2290,7 +2293,13 @@ export default function App() {
     }
     
     const dateStr = formatDateLog();
-    const logEntry = { weight: validatedWeight, reps: validatedReps, date: dateStr, id: Date.now() };
+    const rir = metadata.rir === '' || metadata.rir === undefined ? null : Number(metadata.rir);
+    const restSeconds = Number(metadata.restSeconds) || 0;
+    if ((rir !== null && (!Number.isInteger(rir) || rir < 0 || rir > 10)) || restSeconds < 0 || restSeconds > 600) {
+      showError('RIR o descanso no válido');
+      return;
+    }
+    const logEntry = { weight: validatedWeight, reps: validatedReps, date: dateStr, id: Date.now(), rir, restSeconds };
     
     // Validate log structure with AJV
     const validation = validateLogAJV(logEntry);
@@ -2302,10 +2311,36 @@ export default function App() {
     
     updateUserInCloud(currentClientId, (u) => {
       const logs = u.logs || {};
-      return { ...u, logs: { ...logs, [sanitizeInput(exName)]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, MAX_LOG_ENTRIES) } };
+      const sessionDayKey = toLocalDateKey(parseDateLog(dateStr));
+      return {
+        ...u,
+        lastActivityAt: new Date().toISOString(),
+        trainingDaysHistory: recordTrainingDay(u.trainingDaysHistory, sessionDayKey),
+        logs: { ...logs, [sanitizeInput(exName)]: [logEntry, ...(Array.isArray(logs[exName]) ? logs[exName] : [])].slice(0, MAX_LOG_ENTRIES) }
+      };
     });
     showSuccess("Serie registrada");
   }, [currentClientId, updateUserInCloud]);
+
+  const updateLogRecord = useCallback((exName, logId, values) => {
+    const weight = safeParseWeight(values.weight);
+    const reps = safeParseReps(values.reps);
+    const rir = values.rir === '' ? null : Number(values.rir);
+    if ((!weight && !reps) || (rir !== null && (!Number.isInteger(rir) || rir < 0 || rir > 10))) {
+      showError('Peso, repeticiones o RIR no válidos');
+      return;
+    }
+    updateUserInCloud(currentClientId, user => ({
+      ...user,
+      logs: {
+        ...user.logs,
+        [exName]: (Array.isArray(user.logs?.[exName]) ? user.logs[exName] : []).map(entry => entry.id === logId
+          ? { ...entry, weight, reps, rir }
+          : entry)
+      }
+    }));
+    showSuccess('Serie actualizada');
+  }, [currentClientId, updateUserInCloud, showError, showSuccess]);
 
   const deleteLogRecord = useCallback((exName, logId) => updateUserInCloud(currentClientId, u => ({ ...u, logs: { ...u.logs, [exName]: (Array.isArray(u.logs?.[exName]) ? u.logs[exName] : []).filter(l => l.id !== logId) } })), [currentClientId, updateUserInCloud]);
   
@@ -2318,6 +2353,54 @@ export default function App() {
       return { ...u, exerciseNotes: { ...exNotes, [exName]: [{ text: sanitized, date: dateStr, id: Date.now() }, ...(Array.isArray(exNotes[exName]) ? exNotes[exName] : [])].slice(0, 20) } };
     });
   }, [currentClientId, updateUserInCloud]);
+
+  const addExerciseFeedback = useCallback((feedbackEntry) => {
+    if (!currentClientId || isFirebaseAdmin || !feedbackEntry?.reaction) return;
+    const days = db[currentClientId]?.workoutData?.days || [];
+    const dayTitle = days.find(day => day.id === feedbackEntry.dayId)?.title || feedbackEntry.dayTitle || '';
+    const feedback = {
+      ...feedbackEntry,
+      exerciseName: sanitizeInput(String(feedbackEntry.exerciseName || ''), 100),
+      dayTitle: sanitizeInput(String(dayTitle), 120),
+      comment: sanitizeInput(String(feedbackEntry.comment || ''), 240),
+      createdAt: new Date().toISOString(),
+      status: 'new'
+    };
+    updateUserInCloud(currentClientId, user => ({
+      ...user,
+      lastActivityAt: feedback.createdAt,
+      exerciseFeedback: [feedback, ...(Array.isArray(user.exerciseFeedback) ? user.exerciseFeedback : [])].slice(0, 30)
+    }));
+    showSuccess('Opinión enviada al entrenador');
+  }, [currentClientId, db, isFirebaseAdmin, updateUserInCloud, showSuccess]);
+
+  const updateExerciseFeedbackStatus = (clientId, feedbackId, status) => {
+    if (!isFirebaseAdmin || !['reviewed', 'resolved', 'new'].includes(status)) return;
+    updateUserInCloud(clientId, user => ({
+      ...user,
+      exerciseFeedback: (Array.isArray(user.exerciseFeedback) ? user.exerciseFeedback : []).map(item => item.id === feedbackId
+        ? { ...item, status, reviewedAt: status === 'new' ? null : new Date().toISOString() }
+        : item)
+    }));
+    showSuccess(status === 'resolved' ? 'Feedback marcado como resuelto' : status === 'reviewed' ? 'Feedback marcado como revisado' : 'Feedback reabierto');
+  };
+
+  const openFeedbackExercise = (clientId, dayId, exerciseName) => {
+    if (!isFirebaseAdmin || !dayId) return;
+    const targetDay = (Array.isArray(db[clientId]?.workoutData?.days) ? db[clientId].workoutData.days : []).find(day => day.id === dayId);
+    const targetExerciseIndex = (Array.isArray(targetDay?.exercises) ? targetDay.exercises : []).findIndex(exercise => exercise.name === exerciseName);
+    setEditingClientId(clientId);
+    setCurrentClientId(clientId);
+    setEditingDayId(dayId);
+    setClientDetailOnly(false);
+    setIsEditingClientRoutine(true);
+    window.setTimeout(() => {
+      const target = targetExerciseIndex >= 0
+        ? document.getElementById(`admin-exercise-${dayId}-${targetExerciseIndex}`)
+        : document.getElementById('admin-client-routine-editor');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  };
   
   const addNoteRecord = () => {
     if (!noteText || !noteText.trim()) return;
@@ -2331,6 +2414,7 @@ export default function App() {
     
     updateUserInCloud(currentClientId, (u) => ({ 
       ...u, 
+      lastActivityAt: new Date().toISOString(),
       notes: [noteEntry, ...(Array.isArray(u.notes) ? u.notes : [])].slice(0, 50) 
     }));
     setNoteText("");
@@ -2365,23 +2449,8 @@ export default function App() {
       return;
     }
     try {
-      const newHash = await hashPassword(adminResetPwd);
-      // Escribir directamente a Firestore y ESPERAR confirmación
-      if (db_cloud && navigator.onLine) {
-        const userRef = doc(db_cloud, COLLECTION_NAME, clientInfoTarget);
-        const currentSnap = await getDocFromServer(userRef);
-        if (currentSnap.exists()) {
-          await setDoc(userRef, { ...currentSnap.data(), password: newHash });
-        } else {
-          setAdminResetError("Usuario no encontrado en la base de datos");
-          return;
-        }
-      }
-      // Actualizar también el estado local
-      setDb(prev => ({
-        ...prev,
-        [clientInfoTarget]: { ...(prev[clientInfoTarget] || {}), password: newHash }
-      }));
+      if (!firebaseFunctions) throw new Error('Cloud Functions no está disponible');
+      await httpsCallable(firebaseFunctions, 'adminResetClientPassword')({ username: clientInfoTarget, password: adminResetPwd });
       setAdminResetError("");
       setAdminResetSuccess("Contraseña actualizada correctamente ✓");
       setTimeout(() => {
@@ -2390,8 +2459,8 @@ export default function App() {
         setAdminResetSuccess("");
       }, 2000);
     } catch (error) {
-      err("Error al resetear contraseña:", error);
-      setAdminResetError("Error al actualizar contraseña: " + error.message);
+      warn('Admin password reset failed:', error.message);
+      setAdminResetError('No se pudo actualizar la contraseña. Comprueba la conexión y el despliegue de Functions.');
     }
   };
 
@@ -2399,7 +2468,7 @@ export default function App() {
   const openImageManagerCb = useCallback((dayId, exName) => { setImageManagerTarget({ dayId, exName }); setImageManagerOpen(true); }, []);
   const renderAdminExerciseCard = (ex, idx, exercises) => (
     <>
-      <div className="relative h-44 bg-zinc-800">
+      <div id={`admin-exercise-${editingDayId}-${idx}`} className="relative h-44 bg-zinc-800">
         <img src={ex.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
         <div className="absolute top-3 left-3 flex gap-2">
@@ -2409,7 +2478,7 @@ export default function App() {
           {idx > 0 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx-1], exes[idx]] = [exes[idx], exes[idx-1]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ArrowLeft size={14}/></button>}
           {idx < exercises.length - 1 && <button onClick={() => updateUserInCloud(editingClientId, u => { const days = [...(u.workoutData?.days || [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) { const exes = [...(days[dIdx].exercises || [])]; [exes[idx], exes[idx+1]] = [exes[idx+1], exes[idx]]; days[dIdx].exercises = exes; } return { ...u, workoutData: { ...u.workoutData, days } }; })} className="bg-black/60 backdrop-blur-sm p-2 rounded-xl text-amber-500 active:scale-90"><ChevronRight size={14}/></button>}
           <button onClick={() => setAdminEditingExIdx(adminEditingExIdx === idx ? null : idx)} className={`backdrop-blur-sm p-2 rounded-xl active:scale-90 ${adminEditingExIdx === idx ? 'bg-amber-500 text-black' : 'bg-black/60 text-white'}`}><Edit3 size={14}/></button>
-          <button onClick={() => removeExerciseFromDay(editingDayId, idx)} className="bg-red-500/80 backdrop-blur-sm p-2 rounded-xl text-white active:scale-90"><Trash2 size={14}/></button>
+          <button type="button" aria-label={`Eliminar ${String(ex.name || 'ejercicio')}`} title="Eliminar ejercicio" onClick={() => removeExerciseFromDay(editingDayId, idx)} className="bg-red-500/80 backdrop-blur-sm p-2 rounded-xl text-white active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"><Trash2 size={14}/></button>
         </div>
         <div className="absolute bottom-3 left-4 text-white">
           <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-black inline-block mb-1">{String(ex.mus || "Fuerza")}</span>
@@ -2564,7 +2633,7 @@ Reglas:
       return { ...u, workoutData: { ...u.workoutData, days } };
     });
     // Persistir imagen custom para TODOS los ejercicios (predefinidos y personalizados)
-    if (loggedInUser === 'entrenador' || loggedInUser === 'coach') {
+    if (isFirebaseAdmin) {
       setCustomExerciseImages(prev => {
         const updated = { ...prev, [exName]: newImgBase64 };
         localStorage.setItem('athlos_custom_exercise_images', JSON.stringify(updated));
@@ -2572,23 +2641,52 @@ Reglas:
         return updated;
       });
     }
-  }, [editingClientId, currentClientId, updateUserInCloud, loggedInUser]);
+  }, [editingClientId, currentClientId, updateUserInCloud, isFirebaseAdmin, loggedInUser]);
 
   // Body metrics stats (weight, body fat, bone mass)
   const addUserStats = useCallback(async (entry) => {
     updateUserInCloud(currentClientId, u => ({
       ...u,
+      lastActivityAt: new Date().toISOString(),
       userStats: [...(Array.isArray(u.userStats) ? u.userStats : []), entry]
     }));
   }, [currentClientId, updateUserInCloud]);
+
+  const updateUserStats = useCallback(async (entryId, updatedEntry) => {
+    updateUserInCloud(currentClientId, user => ({
+      ...user,
+      lastActivityAt: new Date().toISOString(),
+      userStats: (Array.isArray(user.userStats) ? user.userStats : []).map(entry => entry.id === entryId ? updatedEntry : entry)
+    }));
+    showSuccess('Medición actualizada');
+  }, [currentClientId, updateUserInCloud, showSuccess]);
+
+  const deleteUserStats = useCallback(async (entryId) => {
+    updateUserInCloud(currentClientId, user => ({
+      ...user,
+      lastActivityAt: new Date().toISOString(),
+      userStats: (Array.isArray(user.userStats) ? user.userStats : []).filter(entry => entry.id !== entryId)
+    }));
+    showSuccess('Medición eliminada');
+  }, [currentClientId, updateUserInCloud, showSuccess]);
 
   // Progress photos (before/after 3 angles)
   const addProgressPhotos = useCallback(async (entry) => {
     updateUserInCloud(currentClientId, u => ({
       ...u,
+      lastActivityAt: new Date().toISOString(),
       progressPhotos: [...(Array.isArray(u.progressPhotos) ? u.progressPhotos : []), entry]
     }));
   }, [currentClientId, updateUserInCloud]);
+
+  const deleteProgressPhotos = useCallback(async (entryId) => {
+    updateUserInCloud(currentClientId, user => ({
+      ...user,
+      lastActivityAt: new Date().toISOString(),
+      progressPhotos: (Array.isArray(user.progressPhotos) ? user.progressPhotos : []).filter(entry => entry.id !== entryId)
+    }));
+    showSuccess('Fotos eliminadas');
+  }, [currentClientId, updateUserInCloud, showSuccess]);
 
   // Avatar upload: compress image to base64 and save
   const handleAvatarUpload = useCallback((targetUserId) => {
@@ -2636,6 +2734,11 @@ Reglas:
     setIsCreatingProfile(true);
 
     const id = normalizedId;
+    if (!registerMode && !isFirebaseAdmin) {
+      setIsCreatingProfile(false);
+      showError('Solo el administrador puede crear clientes desde este panel.');
+      return;
+    }
     let sourceDays = [];
     if (!registerMode && newClient.sourceTemplate.startsWith("tmpl_")) {
       sourceDays = (db.entrenador?.templates || []).find(t => t.id === newClient.sourceTemplate.replace("tmpl_", ""))?.days || [];
@@ -2643,24 +2746,8 @@ Reglas:
       sourceDays = db[newClient.sourceTemplate.replace("client_", "")]?.workoutData?.days || [];
     }
     try {
-      if (db[id] || INITIAL_DB[id]) {
-        showError("Ese usuario ya existe");
-        setIsCreatingProfile(false);
-        return;
-      }
-      if (db_cloud && navigator.onLine) {
-        const existingSnap = await getDocFromServer(doc(db_cloud, COLLECTION_NAME, id)).catch(() => null);
-        if (existingSnap?.exists()) {
-          showError("Ese usuario ya existe");
-          setIsCreatingProfile(false);
-          return;
-        }
-      }
-
-      const hashedPassword = await hashPassword(password);
       const newUserData = {
         username: id,
-        password: hashedPassword,
         name: name,
         color: "from-blue-600 to-indigo-500",
         subtitle: registerMode ? "Nuevo usuario" : "Nuevo Plan",
@@ -2674,14 +2761,21 @@ Reglas:
         createdAt: new Date().toISOString(),
         workoutData: { days: structuredClone(sourceDays) }
       };
-      
-      // Escribir DIRECTAMENTE a Firestore y esperar confirmación
-      if (db_cloud) {
-        setIsSyncing(true);
-        await setDoc(doc(db_cloud, COLLECTION_NAME, id), newUserData);
-        setIsSyncing(false);
-        log("✅ Cliente creado en Firestore:", id);
+      if (!firebaseFunctions) throw new Error('Cloud Functions no está disponible');
+      setIsSyncing(true);
+      const callableName = registerMode ? 'registerClient' : 'adminCreateClient';
+      const result = await httpsCallable(firebaseFunctions, callableName)({
+        username: id,
+        password,
+        name,
+        profile: newUserData
+      });
+      setIsSyncing(false);
+      if (registerMode && result.data?.customToken) {
+        await setPersistence(firebaseAuth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+        await signInWithCustomToken(firebaseAuth, result.data.customToken);
       }
+      newUserData.authUid = result.data?.uid || '';
       // Actualizar estado local también
       setDb(prev => ({ ...prev, [id]: newUserData }));
       setCurrentClientId(id);
@@ -2689,15 +2783,6 @@ Reglas:
       setRegisterMode(false);
       setNewClient({ name: "", username: "", password: "", sourceTemplate: "", questionnaireRequired: true });
       if (registerMode) {
-        setLoggedInUser(id);
-        setIsAdminMode(false);
-        try {
-          const tokenHours = keepLoggedIn ? TOKEN_HOURS_KEEP : TOKEN_HOURS_DEFAULT;
-          const token = await generateToken(id, tokenHours);
-          storeToken(token, keepLoggedIn);
-        } catch (tokenError) {
-          warn("⚠️ Token generation warning:", tokenError.message);
-        }
         showSuccess("Registro completado ✓");
         if (registerWantQuestionnaireNow) {
           setShowQuestionnaire(true);
@@ -2708,7 +2793,9 @@ Reglas:
     } catch (error) {
       err("❌ Error creando cliente:", error.message);
       setIsSyncing(false);
-      showError("Error al crear cuenta: " + error.message);
+      showError(error.code === 'functions/already-exists'
+        ? 'Ese usuario ya existe.'
+        : 'No se pudo crear la cuenta. Comprueba la conexión y el despliegue de Cloud Functions.');
     } finally {
       setIsCreatingProfile(false);
     }
@@ -2728,6 +2815,25 @@ Reglas:
 
   const finishSession = () => { 
     const h = Math.floor(sessionElapsed / 3600), m = Math.floor((sessionElapsed % 3600) / 60);
+    if (!isFirebaseAdmin && currentClientId) {
+      const finishedAt = new Date();
+      const sessionDayKey = toLocalDateKey(new Date());
+      const completedSession = {
+        id: finishedAt.getTime(),
+        dayId: selectedDay?.id ?? null,
+        dayTitle: sanitizeInput(String(selectedDay?.title || 'Entrenamiento libre'), 120),
+        startedAt: new Date(sessionStart || finishedAt.getTime()).toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        durationSeconds: Math.max(0, Math.floor(sessionElapsed))
+      };
+      updateUserInCloud(currentClientId, profile => ({
+        ...profile,
+        lastActivityAt: finishedAt.toISOString(),
+        trainingDaysHistory: recordTrainingDay(profile.trainingDaysHistory, sessionDayKey),
+        completedSessionsTotal: (Number(profile.completedSessionsTotal) || 0) + 1,
+        completedSessions: [completedSession, ...(Array.isArray(profile.completedSessions) ? profile.completedSessions : [])].slice(0, 200)
+      }));
+    }
     setShowConfetti(true);
     showSuccess(`¡COMPLETADO EN ${h>0?h+'h ':''}${m}m! 🎉`);
     setSessionStart(null); navigateTo("home"); 
@@ -2776,10 +2882,54 @@ Reglas:
   // Hooks must be called unconditionally (before any early returns)
   const client = db[currentClientId] || {};
   const workoutLogs = client.logs || {};
-  const streakCount = useMemo(() => calculateStreak(workoutLogs), [workoutLogs]);
-  const weeklySummary = useMemo(() => getWeeklySummary(workoutLogs), [workoutLogs]);
+  const streakCount = useMemo(() => calculateStreak(workoutLogs, client.trainingDaysHistory), [workoutLogs, client.trainingDaysHistory]);
+  const weeklySummary = useMemo(() => getWeeklySummary(workoutLogs, client.trainingDaysHistory), [workoutLogs, client.trainingDaysHistory]);
+  const trainingDateKeys = useMemo(() => getTrainingDateKeys(workoutLogs, client.trainingDaysHistory), [workoutLogs, client.trainingDaysHistory]);
+  const calendarCells = useMemo(() => {
+    return buildMonthCalendarDays(calendarMonth.getFullYear(), calendarMonth.getMonth());
+  }, [calendarMonth]);
+  const weeklyGoal = getWeeklyGoalProgress(weeklySummary.daysThisWeek, client.weeklyWorkoutGoal);
+  const weeklyWorkoutGoal = weeklyGoal.goal;
+  const weeklyGoalProgress = weeklyGoal.percent;
+  const adminClientEntries = useMemo(() => Object.entries(db)
+    .filter(([id]) => id !== loggedInUser && id !== '_deleted_users')
+    .map(([id, profile]) => ({ id, profile, followUp: getClientFollowUp(profile) })), [db, loggedInUser]);
+  const filteredAdminClients = useMemo(() => {
+    const query = clientSearchQuery.trim().toLocaleLowerCase('es');
+    return adminClientEntries
+      .filter(({ id, profile, followUp }) => {
+        const matchesQuery = !query || `${id} ${profile.name || ''} ${profile.subtitle || ''}`.toLocaleLowerCase('es').includes(query);
+        const matchesFilter = clientFollowUpFilter === 'all'
+          || (clientFollowUpFilter === 'attention' && (followUp.key !== 'active' || followUp.actionOverdue || followUp.pendingFeedbackCount > 0))
+          || (clientFollowUpFilter === 'follow-up-overdue' && followUp.actionOverdue)
+          || (clientFollowUpFilter === 'exercise-feedback' && followUp.pendingFeedbackCount > 0)
+          || (clientFollowUpFilter === 'inactive' && followUp.key === 'inactive')
+          || (clientFollowUpFilter === 'questionnaire' && followUp.key === 'questionnaire')
+          || (clientFollowUpFilter === 'no-training' && followUp.key === 'no-training')
+          || (clientFollowUpFilter === 'active' && followUp.key === 'active');
+        return matchesQuery && matchesFilter;
+      })
+      .sort((a, b) => {
+        if (a.followUp.actionOverdue !== b.followUp.actionOverdue) return a.followUp.actionOverdue ? -1 : 1;
+        if (a.followUp.pendingFeedbackCount !== b.followUp.pendingFeedbackCount) return b.followUp.pendingFeedbackCount - a.followUp.pendingFeedbackCount;
+        const rank = { questionnaire: 0, inactive: 1, 'no-training': 2, active: 3 };
+        return rank[a.followUp.key] - rank[b.followUp.key]
+          || (a.followUp.lastActivity?.getTime() || 0) - (b.followUp.lastActivity?.getTime() || 0);
+      });
+  }, [adminClientEntries, clientFollowUpFilter, clientSearchQuery]);
+  const adminFollowUpCounts = useMemo(() => adminClientEntries.reduce((counts, item) => {
+    counts[item.followUp.key] = (counts[item.followUp.key] || 0) + 1;
+    if (item.followUp.key !== 'active' || item.followUp.actionOverdue || item.followUp.pendingFeedbackCount > 0) counts.attention += 1;
+    if (item.followUp.actionOverdue) counts.overdueActions += 1;
+    counts.pendingFeedback += item.followUp.pendingFeedbackCount;
+    return counts;
+  }, { attention: 0, overdueActions: 0, pendingFeedback: 0, questionnaire: 0, inactive: 0, 'no-training': 0, active: 0 }), [adminClientEntries]);
 
   // --- UI RENDER ---
+
+  if (!authReady) {
+    return <AthlosSplashScreen />;
+  }
 
   if (!loggedInUser) {
     return (
@@ -2882,6 +3032,23 @@ Reglas:
     );
   }
 
+  if (!dataLoaded) {
+    return <AthlosSplashScreen />;
+  }
+
+  if (!isFirebaseAdmin && !db[loggedInUser]) {
+    return (
+      <div className="min-h-screen bg-zinc-950 px-6 flex flex-col items-center justify-center text-center text-white">
+        <div className="max-w-sm space-y-4">
+          <Shield size={36} className="mx-auto text-amber-500" />
+          <h1 className="text-xl font-black">Perfil no disponible</h1>
+          <p className="text-sm leading-relaxed text-zinc-400">Esta cuenta no tiene un perfil Athlos asociado. Contacta con tu entrenador para vincularla.</p>
+          <button onClick={() => signOut(firebaseAuth)} className="rounded-xl bg-amber-500 px-5 py-3 text-xs font-black uppercase text-black">Cerrar sesión</button>
+        </div>
+      </div>
+    );
+  }
+
   if (!dataLoaded || !db[currentClientId]) return (
     <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-white">
       <Loader2 className="animate-spin text-amber-500 mb-4" size={40} />
@@ -2897,7 +3064,7 @@ Reglas:
   return (
     <div className="min-h-full font-sans transition-colors duration-500" style={!isAdminMode && palette ? { backgroundColor: palette.dark, color: palette.text } : undefined} >
       <ClientQuestionnaire
-        isOpen={showQuestionnaire && loggedInUser !== 'entrenador' && loggedInUser !== 'coach'}
+        isOpen={showQuestionnaire && !isFirebaseAdmin}
         clientName={String(client?.name || loggedInUser || '')}
         initialData={client?.questionnaire || {}}
         required={client?.questionnaireRequired === true}
@@ -2919,14 +3086,14 @@ Reglas:
            <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-[9px] font-black uppercase" style={palette ? { color: `${palette.text}80` } : { color: '#a1a1aa' }}>{isOnline ? 'Online' : 'Offline'}</span></div>
            <div className="flex gap-2">
               {isAdminMode && <button onClick={() => setIsAdminMode(false)} className="bg-blue-500/10 text-blue-500 p-2 rounded-xl text-xs font-bold px-3">Ver como cliente</button>}
-              {!isAdminMode && loggedInUser === 'entrenador' && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-500 p-2 rounded-xl"><Crown size={18}/></button>}
-              {!isAdminMode && loggedInUser !== 'entrenador' && <button onClick={() => setShowClientSettings(true)} className="p-2 rounded-xl transition-all" style={palette ? { backgroundColor: `${palette.accent}20`, color: palette.accent } : {}}><Settings size={18}/></button>}
+              {!isAdminMode && isFirebaseAdmin && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-500 p-2 rounded-xl"><Crown size={18}/></button>}
+              {!isAdminMode && !isFirebaseAdmin && <button onClick={() => setShowClientSettings(true)} className="p-2 rounded-xl transition-all" style={palette ? { backgroundColor: `${palette.accent}20`, color: palette.accent } : {}}><Settings size={18}/></button>}
               <button onClick={signOutUser} className="p-2 rounded-xl border" style={palette ? { backgroundColor: `${palette.card}`, borderColor: `${palette.accent}30`, color: '#ef4444' } : { backgroundColor: '#fef2f2', color: '#ef4444', borderColor: '#fee2e2' }}><LogOut size={18}/></button>
            </div>
         </div>
 
         {activeTab === "home" && (
-          <div className="space-y-8 animate-in fade-in duration-500">
+          <div className="space-y-5 animate-in fade-in duration-500">
             
             {/* NEW: Athlos Premium Brand Header with Logo & Daily Phrase */}
             <AthlosBrandHeader 
@@ -2936,7 +3103,7 @@ Reglas:
               onAdminEditPhrase={saveMotivationalPhrase}
             />
             
-            <div className={`bg-gradient-to-br ${isAdminMode && !isEditingClientRoutine ? "from-zinc-800 to-zinc-900 border border-zinc-700" : String(client.color || "from-blue-600 to-indigo-500")} p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden`}>
+            <div className={`bg-gradient-to-br ${isAdminMode && !isEditingClientRoutine ? "from-zinc-800 to-zinc-900 border border-zinc-700" : String(client.color || "from-blue-600 to-indigo-500")} p-5 rounded-[2rem] text-white shadow-xl relative overflow-hidden`}>
               <div className="flex flex-col gap-1 relative z-10">
                  {isAdminMode && !isEditingClientRoutine ? (
                    <>
@@ -2951,7 +3118,7 @@ Reglas:
                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={14} className="text-white" /></div>
                        </button>
                        <div>
-                         <h1 className="text-3xl font-black uppercase tracking-tight">{String(client.name || "Cliente")}</h1>
+                         <h1 className="text-2xl font-black uppercase tracking-tight">{String(client.name || "Cliente")}</h1>
                          <p className="text-sm font-medium italic opacity-80">{String(client.subtitle || "")}</p>
                        </div>
                      </div>
@@ -2981,57 +3148,124 @@ Reglas:
                   </div>
                 </div>
                 {!clientDetailOnly && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').sort((a, b) => {
-                      const aTime = new Date(db[a]?.createdAt || 0).getTime();
-                      const bTime = new Date(db[b]?.createdAt || 0).getTime();
-                      return bTime - aTime;
-                    }).map(id => {
-                    const c = db[id];
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+                      {[
+                        { key: 'attention', label: 'Revisar', value: adminFollowUpCounts.attention, color: 'text-amber-300' },
+                        { key: 'exercise-feedback', label: 'Opiniones nuevas', value: adminFollowUpCounts.pendingFeedback, color: 'text-rose-300' },
+                        { key: 'follow-up-overdue', label: 'Seguimientos vencidos', value: adminFollowUpCounts.overdueActions, color: 'text-red-300' },
+                        { key: 'questionnaire', label: 'Cuestionario', value: adminFollowUpCounts.questionnaire, color: 'text-red-300' },
+                        { key: 'inactive', label: '+14 días', value: adminFollowUpCounts.inactive, color: 'text-orange-300' },
+                        { key: 'no-training', label: 'Sin registros', value: adminFollowUpCounts['no-training'], color: 'text-zinc-300' }
+                      ].map(item => (
+                        <button key={item.key} onClick={() => setClientFollowUpFilter(item.key)} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-left hover:border-amber-500/30">
+                          <span className="block text-[8px] font-black uppercase tracking-wider text-zinc-500">{item.label}</span>
+                          <span className={`mt-1 block text-xl font-black ${item.color}`}>{item.value}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_190px]">
+                      <label className="relative block">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                        <input value={clientSearchQuery} onChange={event => setClientSearchQuery(event.target.value)} placeholder="Buscar cliente por nombre o usuario..." className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-3 pl-9 pr-3 text-xs text-white outline-none focus:border-amber-500/50" />
+                      </label>
+                      <select value={clientFollowUpFilter} onChange={event => setClientFollowUpFilter(event.target.value)} aria-label="Filtrar clientes por seguimiento" className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs font-bold text-zinc-200 outline-none focus:border-amber-500/50">
+                        <option value="all">Todos los estados</option>
+                        <option value="attention">Necesitan revisión</option>
+                        <option value="exercise-feedback">Feedback de ejercicios</option>
+                        <option value="follow-up-overdue">Seguimiento vencido</option>
+                        <option value="questionnaire">Cuestionario pendiente</option>
+                        <option value="inactive">Inactivos +14 días</option>
+                        <option value="no-training">Sin entrenamientos</option>
+                        <option value="active">Al día</option>
+                      </select>
+                    </div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">{filteredAdminClients.length} de {adminClientEntries.length} clientes</p>
+                    <div className="grid grid-cols-2 gap-3">
+                    {filteredAdminClients.map(({ id, profile: c, followUp }) => {
                     const isSelected = editingClientId === id;
                     const dayCount = Array.isArray(c.workoutData?.days) ? c.workoutData.days.length : 0;
                     const logCount = Object.values(c.logs || {}).flat().length;
+                    const sessionCount = Number(c.completedSessionsTotal) || 0;
+                    const statusStyles = {
+                      questionnaire: 'bg-red-500/15 text-red-300',
+                      inactive: 'bg-orange-500/15 text-orange-300',
+                      'no-training': 'bg-zinc-700 text-zinc-300',
+                      active: 'bg-emerald-500/15 text-emerald-300'
+                    };
                     return (
-                      <button key={id} onClick={() => handleClientSelect(id)}
-                        className={`relative p-4 rounded-2xl border text-left transition-all active:scale-[0.97] ${isSelected ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-800'}`}>
+                      <div key={id} role="button" tabIndex={0}
+                        onClick={() => handleClientSelect(id)}
+                        onKeyDown={event => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            handleClientSelect(id);
+                          }
+                        }}
+                        className={`relative p-4 rounded-2xl border text-left transition-all active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isSelected ? 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10' : 'border-zinc-800 bg-zinc-800/50 hover:border-zinc-700 hover:bg-zinc-800'}`}>
                         <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${String(c.color || 'from-blue-600 to-indigo-500')} flex items-center justify-center text-white text-xs font-black mb-2 overflow-hidden`}>
                           {c.avatar ? <img src={c.avatar} alt="" className="w-full h-full object-cover" /> : String(c.name || id).charAt(0).toUpperCase()}
                         </div>
                         <p className={`text-sm font-black truncate ${isSelected ? 'text-amber-500' : 'text-white'}`}>{String(c.name || id)}</p>
                         <p className="text-[9px] text-zinc-500 truncate mt-0.5">{String(c.subtitle || '—')}</p>
                         <div className="flex items-center gap-3 mt-2 flex-wrap">
-                          <span className="text-[8px] text-zinc-600 font-bold">{dayCount} días</span>
+                          <span className="text-[8px] text-zinc-600 font-bold">{sessionCount} sesiones</span>
+                          <span className="text-[8px] text-zinc-600 font-bold">Rutina: {dayCount} días</span>
                           <span className="text-[8px] text-zinc-600 font-bold">{logCount} logs</span>
-                                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${c.questionnaireRequired === true ? 'bg-red-500/15 text-red-300' : c.questionnaireSubmittedAt ? 'bg-emerald-500/15 text-emerald-300' : 'bg-zinc-700 text-zinc-400'}`}>{c.questionnaireRequired === true ? 'Cuestionario pendiente' : c.questionnaireSubmittedAt ? 'Cuestionario realizado' : 'Cuestionario opcional'}</span>
+                          {followUp.pendingFeedbackCount > 0 && <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[8px] font-black uppercase text-rose-300">{followUp.pendingFeedbackCount} opiniones nuevas</span>}
+                          <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${statusStyles[followUp.key]}`}>{followUp.label}</span>
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="absolute top-3 right-3 text-zinc-600 hover:text-amber-500 transition-colors"><Eye size={14}/></button>
-                      </button>
+                        <p className="mt-2 text-[8px] text-zinc-500">Última actividad: {followUp.lastActivity ? followUp.lastActivity.toLocaleDateString('es-ES') : 'Sin actividad registrada'}</p>
+                        {followUp.nextAction && <p className={`mt-1 truncate text-[8px] font-bold ${followUp.actionOverdue ? 'text-red-300' : 'text-amber-300'}`}>{followUp.actionOverdue ? 'Seguimiento vencido: ' : 'Próximo seguimiento: '}{followUp.nextAction.title}</p>}
+                        <button type="button" aria-label={`Ver detalles de ${String(c.name || id)}`} onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="absolute top-3 right-3 text-zinc-600 hover:text-amber-500 transition-colors"><Eye size={14}/></button>
+                      </div>
                     );
                   })}
+                  </div>
                   </div>
                 )}
                 
                 {editingClientId && db[editingClientId] && (
-                  <div className="border-t border-zinc-800 pt-12 space-y-12 animate-in slide-in-from-top-4 mt-8">
+                  <div id="admin-client-routine-editor" className="border-t border-zinc-800 pt-12 space-y-12 animate-in slide-in-from-top-4 mt-8">
                     {clientDetailOnly && (
-                      <div className="flex items-center justify-between gap-4 mb-4">
+                      <div className="mb-4 space-y-4">
                         <button onClick={() => { setClientDetailOnly(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsEditingClientRoutine(false); }} className="text-amber-500 text-[9px] font-bold">← Volver a la lista</button>
                         {selectedClientSummary && (
-                          <div className="bg-zinc-950 p-4 rounded-2xl border border-amber-500/15 w-full">
-                            <div className="grid grid-cols-3 gap-4 text-white">
-                              <div>
-                                <p className="text-[9px] uppercase text-zinc-400 font-black">Días entrenados</p>
-                                <p className="mt-2 text-2xl font-black">{selectedClientSummary.totalDaysTrained}</p>
+                          <div className="w-full rounded-2xl border border-amber-500/15 bg-zinc-950 p-3 sm:p-4">
+                            <div className="grid grid-cols-2 gap-2.5 text-white sm:gap-3">
+                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Sesiones finalizadas</p>
+                                <p className="mt-2 text-2xl font-black tabular-nums">{selectedClientSummary.completedSessions}</p>
                               </div>
-                              <div>
-                                <p className="text-[9px] uppercase text-zinc-400 font-black">Objetivo</p>
-                                <p className="mt-2 text-sm text-white leading-snug">{selectedClientSummary.objective}</p>
+                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Días con actividad</p>
+                                <p className="mt-2 text-2xl font-black tabular-nums">{selectedClientSummary.activeDays}</p>
                               </div>
-                              <div>
-                                <p className="text-[9px] uppercase text-zinc-400 font-black">Lesiones</p>
-                                <p className="mt-2 text-sm text-white leading-snug">{selectedClientSummary.injuries}</p>
+                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Días en rutina</p>
+                                <p className="mt-2 text-2xl font-black tabular-nums">{selectedClientSummary.plannedDays}</p>
+                              </div>
+                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Opiniones nuevas</p>
+                                <p className={`mt-2 text-2xl font-black tabular-nums ${selectedClientSummary.pendingFeedbackCount > 0 ? 'text-rose-300' : 'text-white'}`}>{selectedClientSummary.pendingFeedbackCount}</p>
                               </div>
                             </div>
+                            <div className="mt-2.5 min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:mt-3">
+                              <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Objetivo</p>
+                              <p className="mt-2 break-words text-sm font-bold leading-snug text-white">{selectedClientSummary.objective}</p>
+                            </div>
+                            {Array.isArray(db[editingClientId].completedSessions) && db[editingClientId].completedSessions[0] && (
+                              <p className="mt-3 border-t border-zinc-800 pt-3 text-[9px] text-zinc-400">
+                                Última sesión: <span className="font-bold text-zinc-200">{db[editingClientId].completedSessions[0].dayTitle}</span> · {new Date(db[editingClientId].completedSessions[0].finishedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })} · {Math.floor((db[editingClientId].completedSessions[0].durationSeconds || 0) / 60)} min
+                              </p>
+                            )}
+                            {selectedClientSummary.injuries !== '—' && (
+                              <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                                <p className="text-[9px] font-black uppercase text-red-300">Lesiones y molestias declaradas</p>
+                                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-zinc-200">{selectedClientSummary.injuries}</p>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3067,6 +3301,87 @@ Reglas:
                           <textarea key={`advice-${editingClientId}`} defaultValue={String(db[editingClientId].advice || "")} maxLength="150" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, advice: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
                         </div>
                       </div>
+                    </div>
+
+                    <section className="space-y-3 rounded-2xl border border-rose-500/20 bg-zinc-900/70 p-4" aria-labelledby="exercise-feedback-inbox-title">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 id="exercise-feedback-inbox-title" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-rose-300"><MessageSquareHeart size={14}/> Opiniones de ejercicios</h4>
+                          <p className="mt-1 text-[9px] text-zinc-500">Feedback del cliente, separado de las notas técnicas de máquina.</p>
+                        </div>
+                        <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[8px] font-black text-rose-300">{(Array.isArray(db[editingClientId].exerciseFeedback) ? db[editingClientId].exerciseFeedback : []).filter(item => item.status === 'new').length} nuevas</span>
+                      </div>
+                      <AdminExerciseFeedbackInbox
+                        items={[...(Array.isArray(db[editingClientId].exerciseFeedback) ? db[editingClientId].exerciseFeedback : [])].sort((a, b) => Number(a.status !== 'new') - Number(b.status !== 'new') || new Date(b.createdAt) - new Date(a.createdAt))}
+                        onReview={feedbackId => updateExerciseFeedbackStatus(editingClientId, feedbackId, 'reviewed')}
+                        onResolve={feedbackId => updateExerciseFeedbackStatus(editingClientId, feedbackId, 'resolved')}
+                        onOpenExercise={(dayId, exerciseName) => openFeedbackExercise(editingClientId, dayId, exerciseName)}
+                      />
+                    </section>
+
+                    <section className="space-y-4 rounded-2xl border border-amber-500/20 bg-zinc-900/70 p-4" aria-labelledby="follow-up-actions-heading">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 id="follow-up-actions-heading" className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-amber-400"><CalendarDays size={14}/> Plan de seguimiento</h4>
+                          <p className="mt-1 text-[9px] text-zinc-500">Acciones privadas del entrenador para este cliente.</p>
+                        </div>
+                        <span className="text-[9px] font-bold text-zinc-500">{(Array.isArray(db[editingClientId].followUpActions) ? db[editingClientId].followUpActions : []).filter(action => action.status !== 'completed').length} pendientes</span>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
+                        <input value={followUpActionTitle} onChange={event => setFollowUpActionTitle(event.target.value)} maxLength={160} placeholder="Ej. Revisar adherencia y ajustar cargas" aria-label="Acción de seguimiento" className="min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs text-white outline-none focus:border-amber-500" />
+                        <input type="date" value={followUpActionDueDate} onChange={event => setFollowUpActionDueDate(event.target.value)} aria-label="Fecha de seguimiento" className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs text-white outline-none focus:border-amber-500" />
+                        <button onClick={() => addFollowUpAction(editingClientId)} disabled={!followUpActionTitle.trim()} className="flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-[9px] font-black uppercase text-black disabled:opacity-40"><Plus size={14}/> Añadir</button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {[...(Array.isArray(db[editingClientId].followUpActions) ? db[editingClientId].followUpActions : [])]
+                          .sort((a, b) => Number(a.status === 'completed') - Number(b.status === 'completed') || String(a.dueDate || '9999-12-31').localeCompare(String(b.dueDate || '9999-12-31')))
+                          .map(action => {
+                            const overdue = action.status !== 'completed' && action.dueDate && action.dueDate < new Date().toISOString().slice(0, 10);
+                            return (
+                              <div key={action.id} className={`flex items-center gap-3 rounded-xl border p-3 ${overdue ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 bg-zinc-950/80'}`}>
+                                <button onClick={() => toggleFollowUpAction(editingClientId, action.id)} aria-label={action.status === 'completed' ? 'Reabrir seguimiento' : 'Marcar seguimiento como completado'} className={`shrink-0 ${action.status === 'completed' ? 'text-emerald-400' : 'text-zinc-500 hover:text-amber-400'}`}>
+                                  <CheckCircle2 size={18}/>
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                  <p className={`break-words text-xs font-bold ${action.status === 'completed' ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>{action.title}</p>
+                                  <p className={`mt-1 text-[8px] font-black uppercase ${overdue ? 'text-red-300' : action.status === 'completed' ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                                    {action.status === 'completed' ? 'Completado' : overdue ? 'Vencido' : 'Pendiente'}{action.dueDate ? ` · ${new Date(`${action.dueDate}T00:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}` : ' · Sin fecha'}
+                                  </p>
+                                </div>
+                                <button onClick={() => deleteFollowUpAction(editingClientId, action.id)} aria-label="Eliminar seguimiento" className="shrink-0 rounded-lg p-2 text-zinc-600 hover:bg-red-500/10 hover:text-red-400"><Trash2 size={14}/></button>
+                              </div>
+                            );
+                          })}
+                        {(Array.isArray(db[editingClientId].followUpActions) ? db[editingClientId].followUpActions : []).length === 0 && <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-center text-[9px] text-zinc-500">Todavía no hay acciones de seguimiento.</p>}
+                      </div>
+                    </section>
+
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                      <button onClick={() => setShowRoutineHistory(value => !value)} className="flex w-full items-center justify-between text-left">
+                        <span className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-300"><History size={14} className="text-amber-500"/> Historial de rutina ({(Array.isArray(db[editingClientId].routineHistory) ? db[editingClientId].routineHistory : []).length})</span>
+                        <ChevronRight size={14} className={`text-zinc-500 transition-transform ${showRoutineHistory ? 'rotate-90' : ''}`}/>
+                      </button>
+                      {showRoutineHistory && (
+                        <div className="mt-3 space-y-2">
+                          {(Array.isArray(db[editingClientId].routineHistory) ? db[editingClientId].routineHistory : []).length === 0 && <p className="text-[9px] text-zinc-500">Los cambios de rutina posteriores a esta mejora aparecerán aquí.</p>}
+                          {(Array.isArray(db[editingClientId].routineHistory) ? db[editingClientId].routineHistory : []).map(version => (
+                            <div key={version.id} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-950 p-3">
+                              <div>
+                                <p className="text-[9px] font-bold text-zinc-300">{new Date(version.savedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                                <p className="mt-1 text-[8px] text-zinc-500">{Array.isArray(version.days) ? version.days.length : 0} días · versión anterior</p>
+                              </div>
+                              <button onClick={() => {
+                                if (!window.confirm('¿Restaurar esta rutina? La actual se guardará como una nueva versión.')) return;
+                                updateUserInCloud(editingClientId, user => ({ ...user, workoutData: { ...(user.workoutData || {}), days: structuredClone(version.days || []) } }));
+                                setEditingDayId(null);
+                                showSuccess('Rutina restaurada');
+                              }} className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[8px] font-black uppercase text-amber-300">Restaurar</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* SELECTOR DE DÍAS */}
@@ -3334,7 +3649,7 @@ Reglas:
                                                     <input defaultValue={ce.yt} onBlur={e => updateCustomExercise(ceIdx, { ...ce, yt: e.target.value })} className="w-full bg-zinc-800 p-1.5 rounded-lg text-white text-[10px] outline-none border border-zinc-700" placeholder="YouTube URL" />
                                                     <div className="flex gap-2">
                                                       <button onClick={() => setEditingCustomExIdx(null)} className="flex-1 bg-amber-500 text-black font-bold py-1.5 rounded-lg text-[9px] uppercase active:scale-95">✓ Listo</button>
-                                                      <button onClick={() => { deleteCustomExercise(ceIdx); setEditingCustomExIdx(null); }} className="bg-red-500/20 text-red-400 font-bold py-1.5 px-3 rounded-lg text-[9px] uppercase active:scale-95">🗑</button>
+                                                      <button onClick={() => { if (!window.confirm(`¿Eliminar "${ce.name}" de tu biblioteca?`)) return; deleteCustomExercise(ceIdx); setEditingCustomExIdx(null); }} className="bg-red-500/20 text-red-400 font-bold py-1.5 px-3 rounded-lg text-[9px] uppercase active:scale-95">🗑</button>
                                                     </div>
                                                   </div>
                                                 ) : (
@@ -3342,8 +3657,7 @@ Reglas:
                                                     <img src={ce.img || FALLBACK_IMG} alt="" className="w-12 h-12 rounded-xl object-cover shrink-0" loading="lazy" onError={imgError} />
                                                     <button onClick={() => {
                                                       const exToAdd = { name: ce.name, s: ce.s || 3, r: ce.r || "12", tip: ce.tip || "", mus: ce.mus || "", yt: ce.yt || "", img: ce.img || "" };
-                                                      updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...exToAdd, name: sanitizeInput(exToAdd.name), mus: sanitizeInput(exToAdd.mus), tip: sanitizeInput(exToAdd.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; });
-                                                      showSuccess("Ejercicio agregado ✓");
+                                                      addExerciseToDay(exToAdd);
                                                     }} className="flex-1 min-w-0 text-left">
                                                       <p className="text-sm font-bold text-white truncate">{ce.name}</p>
                                                       <p className="text-[9px] text-zinc-500">{ce.mus}{ce.tip ? ` · ${ce.tip}` : ''}</p>
@@ -3380,8 +3694,7 @@ Reglas:
                                           <button key={tmpl.name} onClick={() => {
                                             const tip = tmpl.coaching || tmpl.tip || "";
                                             const exToAdd = { name: tmpl.name, s: tmpl.s || 3, r: tmpl.r || "12", tip: tip, mus: tmpl.mus, yt: tmpl.yt, img: resolvedImg };
-                                            updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...exToAdd, name: sanitizeInput(exToAdd.name), mus: sanitizeInput(exToAdd.mus), tip: sanitizeInput(exToAdd.tip) }]; return { ...u, workoutData: { ...u.workoutData, days } }; });
-                                            showSuccess("Ejercicio agregado ✓");
+                                            addExerciseToDay(exToAdd);
                                           }} className="w-full flex items-center gap-3 bg-zinc-900 p-3 rounded-xl border border-zinc-700 hover:border-amber-500/50 active:scale-[0.98] transition-all text-left">
                                             <img src={resolvedImg || FALLBACK_IMG} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" loading="lazy" onError={imgError} />
                                             <div className="flex-1 min-w-0">
@@ -3476,8 +3789,8 @@ Reglas:
                                       )}
 
                                       <div className="flex gap-2">
-                                        <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); showSuccess("Ejercicio agregado ✓"); } }} className="flex-1 bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 flex items-center justify-center gap-1"><Plus size={14}/> Añadir</button>
-                                        <button onClick={() => { if(newEx.name?.trim()) { updateUserInCloud(editingClientId, u => { const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])]; const dIdx = days.findIndex(d => d.id === editingDayId); if(dIdx > -1) days[dIdx].exercises = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : []), { ...newEx, name: sanitizeInput(newEx.name), mus: sanitizeInput(newEx.mus), tip: sanitizeInput(newEx.tip), yt: newEx.yt ? sanitizeUrl(newEx.yt) : '', img: newEx.img || '' }]; return { ...u, workoutData: { ...u.workoutData, days } }; }); saveCustomExercise(newEx); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); } }} className="bg-purple-500 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase active:scale-95 flex items-center gap-1" title="Añadir y guardar en tu biblioteca">📚 Guardar</button>
+                                        <button onClick={() => { if (addExerciseToDay(newEx)) setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); }} className="flex-1 bg-amber-500 text-black font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 flex items-center justify-center gap-1"><Plus size={14}/> Añadir</button>
+                                        <button onClick={() => { if (addExerciseToDay(newEx, true)) setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); }} className="bg-purple-500 text-white font-black py-3 px-4 rounded-xl text-[10px] uppercase active:scale-95 flex items-center gap-1" title="Añadir y guardar en tu biblioteca">📚 Guardar</button>
                                       </div>
                                       <p className="text-[8px] text-zinc-600 text-center">📚 = Añadir al día + guardar en tu biblioteca para reusar</p>
                                     </div>
@@ -3495,47 +3808,65 @@ Reglas:
               </div>
             )}
 
-            {/* Streak counter + Weekly summary */}
             {!isAdminMode && (
-                <div className="space-y-4 mt-6">
-                  {streakCount > 0 && (
-                    <div className="flex items-center gap-4 p-5 rounded-[2rem] border shadow-sm" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' }}>
-                      <div className="text-4xl">🔥</div>
-                      <div>
-                        <p className="text-2xl font-black">{streakCount} <span className="text-sm font-bold opacity-60">{streakCount === 1 ? 'día' : 'días'} seguidos</span></p>
-                        <p className="text-[10px] font-bold opacity-40 uppercase tracking-wider">¡Sigue así, máquina!</p>
-                      </div>
-                    </div>
-                  )}
-                  {(weeklySummary.daysThisWeek > 0 || weeklySummary.totalSets > 0) && (
-                    <div className="p-5 rounded-[2rem] border shadow-sm" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' }}>
-                      <div className="flex items-center gap-2 mb-4">
+              <section className="mt-6 overflow-hidden rounded-[2rem] border shadow-sm" aria-labelledby="consistency-title" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' }}>
+                <div className="space-y-5 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
                         <CalendarDays size={16} style={palette ? { color: palette.accent } : { color: '#f59e0b' }}/>
-                        <h3 className="text-[10px] font-black uppercase tracking-widest" style={palette ? { color: palette.accent } : { color: '#f59e0b' }}>Esta semana</h3>
+                        <h3 id="consistency-title" className="text-[10px] font-black uppercase tracking-widest" style={palette ? { color: palette.accent } : { color: '#f59e0b' }}>Tu constancia</h3>
                       </div>
-                      <div className="grid grid-cols-3 gap-3 text-center">
-                        <div>
-                          <p className="text-2xl font-black">{weeklySummary.daysThisWeek}</p>
-                          <p className="text-[9px] font-bold opacity-40 uppercase">Días</p>
-                        </div>
-                        <div>
-                          <p className="text-2xl font-black">{weeklySummary.totalSets}</p>
-                          <p className="text-[9px] font-bold opacity-40 uppercase">Series</p>
-                        </div>
-                        <div>
-                          <p className="text-2xl font-black">{weeklySummary.totalVolume > 1000 ? `${(weeklySummary.totalVolume / 1000).toFixed(1)}k` : weeklySummary.totalVolume}</p>
-                          <p className="text-[9px] font-bold opacity-40 uppercase">Kg total</p>
-                        </div>
-                      </div>
-                      {weeklySummary.volumeChange !== 0 && (
-                        <div className={`mt-3 flex items-center justify-center gap-1 text-[10px] font-bold ${weeklySummary.volumeChange > 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                          {weeklySummary.volumeChange > 0 ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
-                          <span>{weeklySummary.volumeChange > 0 ? '+' : ''}{weeklySummary.volumeChange}% vs semana pasada</span>
-                        </div>
-                      )}
+                      <p className="mt-1 text-[9px] opacity-50">Cada sesión cuenta. El calendario no se reinicia ni te penaliza.</p>
+                    </div>
+                    <label className="shrink-0 text-right">
+                      <span className="block text-[8px] font-bold uppercase opacity-45">Meta semanal</span>
+                      <select value={weeklyWorkoutGoal} disabled={isFirebaseAdmin} onChange={event => updateUserInCloud(currentClientId, user => ({ ...user, weeklyWorkoutGoal: Number(event.target.value) }))} aria-label="Meta semanal de entrenamientos" className="mt-1 rounded-lg border px-2 py-1.5 text-xs font-black disabled:opacity-70" style={palette ? { backgroundColor: palette.dark, color: palette.text, borderColor: `${palette.accent}35` } : { backgroundColor: '#09090b', color: 'white', borderColor: '#3f3f46' }}>
+                        {[1, 2, 3, 4, 5, 6, 7].map(goal => <option key={goal} value={goal}>{goal} días</option>)}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-end justify-between gap-3">
+                      <p className="text-2xl font-black">{weeklySummary.daysThisWeek}<span className="ml-1 text-xs font-bold opacity-50">/ {weeklyWorkoutGoal} sesiones</span></p>
+                      <p className="text-right text-[9px] font-bold opacity-55">{weeklyGoalProgress >= 100 ? 'Meta semanal alcanzada. Buen trabajo.' : `A tu ritmo: ${weeklyWorkoutGoal - weeklySummary.daysThisWeek} ${weeklyWorkoutGoal - weeklySummary.daysThisWeek === 1 ? 'sesión' : 'sesiones'} para tu meta`}</p>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-black/20" role="progressbar" aria-label="Progreso del objetivo semanal" aria-valuemin={0} aria-valuemax={weeklyWorkoutGoal} aria-valuenow={Math.min(weeklySummary.daysThisWeek, weeklyWorkoutGoal)}>
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${weeklyGoalProgress}%`, backgroundColor: palette?.accent || '#f59e0b' }}/>
+                    </div>
+                    {streakCount > 0 && <p className="mt-2 text-[8px] font-bold opacity-40">Racha actual: {streakCount} {streakCount === 1 ? 'día' : 'días'} · las pausas también forman parte del progreso.</p>}
+                  </div>
+
+                  <div className="h-px bg-white/10"/>
+
+                  <div>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Mes anterior" className="rounded-lg p-2 opacity-60 hover:opacity-100"><ChevronLeft size={16}/></button>
+                      <h4 className="text-xs font-black capitalize">{calendarMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</h4>
+                      <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Mes siguiente" disabled={calendarMonth.getFullYear() === new Date().getFullYear() && calendarMonth.getMonth() >= new Date().getMonth()} className="rounded-lg p-2 opacity-60 hover:opacity-100 disabled:opacity-20"><ChevronRight size={16}/></button>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5 text-center">
+                      {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((weekday, index) => <span key={`${weekday}-${index}`} className="pb-1 text-[8px] font-black opacity-35">{weekday}</span>)}
+                      {calendarCells.map((day, index) => {
+                        if (!day) return <span key={`blank-${index}`} aria-hidden="true" className="aspect-square"/>;
+                        const dateKey = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const trained = trainingDateKeys.has(dateKey);
+                        const today = dateKey === toLocalDateKey(new Date());
+                        return <span key={dateKey} title={trained ? 'Entrenamiento registrado' : undefined} aria-label={`${day} ${calendarMonth.toLocaleDateString('es-ES', { month: 'long' })}${trained ? ', entrenamiento registrado' : ''}`} className={`flex aspect-square items-center justify-center rounded-full text-[9px] font-bold ${trained ? 'text-black' : 'opacity-55'} ${today ? 'ring-1 ring-amber-400 ring-offset-1 ring-offset-zinc-900' : ''}`} style={trained ? { backgroundColor: palette?.accent || '#f59e0b' } : undefined}>{day}</span>;
+                      })}
+                    </div>
+                    <p className="mt-2 text-center text-[8px] opacity-40">Los días marcados tienen entrenamientos registrados.</p>
+                  </div>
+
+                  {(weeklySummary.totalSets > 0 || weeklySummary.totalVolume > 0) && (
+                    <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4 text-center">
+                      <div><p className="text-lg font-black">{weeklySummary.totalSets}</p><p className="text-[8px] font-bold uppercase opacity-40">Series esta semana</p></div>
+                      <div><p className="text-lg font-black">{weeklySummary.totalVolume > 1000 ? `${(weeklySummary.totalVolume / 1000).toFixed(1)}k` : weeklySummary.totalVolume}</p><p className="text-[8px] font-bold uppercase opacity-40">Kg registrados</p></div>
                     </div>
                   )}
                 </div>
+              </section>
             )}
 
             <div className="grid grid-cols-1 gap-6 mt-8">
@@ -3646,15 +3977,15 @@ Reglas:
                         <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Zap size={12}/> Superserie</span>
                         <div className="h-px flex-1 bg-purple-500/20" />
                       </div>
-                      <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} palette={palette} />
+                      <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
                       <div className="flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center"><Zap size={14} className="text-purple-400"/></div></div>
-                      <ExerciseCard key={`${liveDay.id}-${nextOriginalIdx}`} ex={nextEx} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[nextEx.name] || []} palette={palette} />
+                      <ExerciseCard key={`${liveDay.id}-${nextOriginalIdx}`} ex={nextEx} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[nextEx.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
                     </div>
                   );
                   i += 2;
                 } else {
                   items.push(
-                    <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} palette={palette} />
+                    <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
                   );
                   i += 1;
                 }
@@ -3723,6 +4054,8 @@ Reglas:
             <ProgressTracker
               stats={Array.isArray(client.userStats) ? client.userStats : []}
               onAddStats={addUserStats}
+              onUpdateStats={updateUserStats}
+              onDeleteStats={deleteUserStats}
               palette={palette}
               isAdmin={isAdminMode}
             />
@@ -3730,6 +4063,7 @@ Reglas:
             <PhotoComparator
               progressPhotos={Array.isArray(client.progressPhotos) ? client.progressPhotos : []}
               onSavePhotos={addProgressPhotos}
+              onDeletePhotos={deleteProgressPhotos}
               palette={palette}
             />
           </div>

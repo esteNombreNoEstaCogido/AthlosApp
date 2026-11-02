@@ -2,27 +2,53 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /athlos_clients/{userId} {
-      // La app usa JWT custom (no Firebase Auth) para autenticación.
-      // Protección en capas:
-      // 1. Firebase App Check (configurar en Firebase Console) bloquea peticiones sin app verificada
-      // 2. Validación de estructura de datos en escrituras
-      // 3. Límite de tamaño de documento
+    function signedIn() {
+      return request.auth != null;
+    }
 
-      // Lectura: permitir si App Check está habilitado (request.appCheck) o como fallback temporal
-      allow read: if true;
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
 
-      // Escritura: validar estructura mínima y limitar tamaño
-      allow write: if request.resource.data.keys().hasAll(['username', 'password', 'name'])
-        && request.resource.data.username is string
-        && request.resource.data.password is string
-        && request.resource.data.name is string
-        && request.resource.data.username.size() >= 3
-        && request.resource.data.username.size() <= 50
-        && request.resource.data.password.size() >= 20;
+    function hasNoClientManagedCredentials(data) {
+      return !data.keys().hasAny(['password', 'admin', 'role', 'isAdmin']);
+    }
 
-      // Borrado: solo permitir (admin lo gestiona desde la app)
-      allow delete: if true;
+    match /athlos_clients/{username} {
+      allow get: if isAdmin() || (signedIn() && resource.data.authUid == request.auth.uid);
+      allow list: if isAdmin();
+
+      allow create: if isAdmin() || (
+        signedIn()
+        && request.resource.data.authUid == request.auth.uid
+        && request.resource.data.username == username
+        && request.auth.token.email == username + '@athlos.app'
+        && hasNoClientManagedCredentials(request.resource.data)
+      );
+
+      allow update: if isAdmin() || (
+        signedIn()
+        && resource.data.authUid == request.auth.uid
+        && request.resource.data.authUid == resource.data.authUid
+        && request.resource.data.username == resource.data.username
+        && hasNoClientManagedCredentials(request.resource.data)
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /athlos_public/{documentId} {
+      allow get: if signedIn() && documentId == 'config';
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /athlos_admin_followups/{username} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

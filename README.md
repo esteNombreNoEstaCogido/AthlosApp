@@ -1,6 +1,6 @@
 # 🏋️ ATHLOS - Premium Training App
 
-**Status**: ✅ Production Ready | **Build**: 481.29 kB (gzipped) | **Security**: Hardened
+**Build**: Vite (`dist/`) | **Checks**: 16 security configuration checks and 7 feature tests
 
 ---
 
@@ -23,7 +23,7 @@
 
 ```bash
 npm install
-npm start
+npm run dev
 ```
 
 The app will open at `http://localhost:3000`
@@ -34,14 +34,15 @@ The app will open at `http://localhost:3000`
 npm run build
 ```
 
-Output: `build/` directory (481.29 kB gzipped)
+Output: `dist/` directory.
 
 ### Testing
 
 ```bash
-npm run test:all       # Run all security tests
-npm run test:security  # Run security suite (10 tests)
-npm run test:jwt       # Run JWT tests (7 tests)
+npm run security:check
+npm run test:calendar
+npm run test:feedback
+npm run test:exercises
 ```
 
 ---
@@ -67,17 +68,18 @@ npm run test:jwt       # Run JWT tests (7 tests)
 
 ### 👥 User Management
 - **Admin Controls** - Manage clients and routines
+- **Follow-up dashboard** - Search/filter clients by pending questionnaire, inactivity and training activity
 - **Client Profiles** - Individual training plans
 - **Notes & Feedback** - Add exercise notes and tips
 - **Offline Support** - Works offline with localStorage
 
 ### 🔐 Security
-- **Password Hashing** - bcryptjs with cost factor 12
-- **JWT Authentication** - 24-hour token expiration
-- **Firestore Rules** - IDOR protection, userId-based access
+- **Firebase Authentication** - Email/password credentials and Firebase-managed sessions
+- **Firestore Rules** - Clients are bound to their `authUid`; admin actions require the server-issued `admin` custom claim
+- **Cloud Functions** - Account creation, password reset and deletion run in a trusted environment
 - **Input Validation** - AJV JSON schema validation
 - **Input Sanitization** - XSS prevention, HTML entity encoding
-- **Environment Variables** - 6 required secrets validated at startup
+- **Migration guide** - See [AUTH_MIGRATION.md](AUTH_MIGRATION.md) before deploying the auth change
 
 ---
 
@@ -85,6 +87,9 @@ npm run test:jwt       # Run JWT tests (7 tests)
 
 ```
 AthlosApp/
+├── functions/
+│   ├── index.js                      # Privileged Firebase callable functions
+│   └── migrateLegacyAuth.cjs         # One-time trusted legacy account migration
 ├── src/
 │   ├── App.js                          # Main app component
 │   ├── index.js                        # React entry point
@@ -131,15 +136,15 @@ AthlosApp/
 Create a `.env` file in the root directory:
 
 ```env
-REACT_APP_FIREBASE_API_KEY=your_api_key
-REACT_APP_FIREBASE_PROJECT_ID=athlos-5dcc5
-REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-REACT_APP_FIREBASE_APP_ID=your_app_id
-REACT_APP_GEMINI_KEY=your_gemini_api_key (optional)
-REACT_APP_ENV=development
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_GEMINI_KEY=your_gemini_api_key
+VITE_ENV=development
 ```
 
-These will be validated automatically at startup.
+The required Firebase variables are validated before each production build.
 
 ### Firebase Setup
 
@@ -163,58 +168,18 @@ These will be validated automatically at startup.
 
 | Command | Purpose |
 |---------|---------|
-| `npm start` | Start dev server |
+| `npm run dev` | Start dev server |
 | `npm run build` | Production build |
-| `npm run test:all` | Run all 17 security tests |
-| `npm run test:security` | Run 10 security tests |
-| `npm run test:jwt` | Run 7 JWT tests |
+| `npm run security:check` | Check Firebase Auth and Firestore security configuration |
+| `npm run test:calendar` | Test workout calendar behavior |
+| `npm run test:feedback` | Test exercise feedback validation |
+| `npm run test:exercises` | Test exercise add/remove behavior |
 
 ---
 
-## 🔐 Security (7 Phases Completed)
+## 🔐 Security verification
 
-### Phase 1: Environment Protection ✅
-- 6 required environment variables validated
-- Prevents missing API keys from breaking production
-
-### Phase 2: Password Hashing ✅
-- bcryptjs with cost factor 12
-- All users have hashed passwords
-
-### Phase 3: Firestore Rules ✅
-- IDOR protection: `request.auth.uid == userId`
-- Deny-by-default model
-- Deployed to Firebase production
-
-### Phase 4: Input Validation & Sanitization ✅
-- AJV JSON Schema validation
-- HTML entity encoding prevents XSS
-- URL sanitization (blocks data: URIs)
-
-### Phase 5: JWT Session Management ✅
-- HS256 token signing
-- 24-hour token expiration
-- Secure localStorage storage
-
-### Phase 6: Security Testing ✅
-- 10 comprehensive security tests
-- 7 JWT token tests
-- **Total: 17/17 tests PASSING** ✅
-
-### Phase 7: CI/CD & Documentation ✅
-- Comprehensive security documentation
-- npm scripts for testing
-- Production deployment guides
-
-### Run Security Tests
-
-```bash
-npm run test:all
-# Output:
-# Phase 5 JWT: 7/7 TESTS PASSED ✅
-# Phase 6 Security: 10/10 TESTS PASSED ✅
-# Total: 17/17 PASSING ✅
-```
+Run `npm run security:check` for static configuration checks. These checks do not replace Firebase Emulator tests, a production deployment review, or a penetration test. Before releasing the authentication changes, complete the legacy account migration and deploy both Firestore rules and Cloud Functions as documented in [AUTH_MIGRATION.md](AUTH_MIGRATION.md).
 
 ---
 
@@ -249,11 +214,11 @@ git push origin main
 3. **Set Environment Variables**:
    - In Vercel Dashboard → Settings → Environment Variables
    - Add all variables from `.env`:
-     - `REACT_APP_FIREBASE_API_KEY`
-     - `REACT_APP_FIREBASE_PROJECT_ID`
-     - `REACT_APP_FIREBASE_APP_ID`
-     - `REACT_APP_FIREBASE_MESSAGING_SENDER_ID`
-     - `REACT_APP_GEMINI_KEY` (optional)
+     - `VITE_FIREBASE_API_KEY`
+     - `VITE_FIREBASE_PROJECT_ID`
+     - `VITE_FIREBASE_APP_ID`
+     - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+     - `VITE_GEMINI_KEY` (optional)
 
 4. **Deploy**:
    - Vercel auto-deploys on every push to main
@@ -272,28 +237,10 @@ Set in Firebase Console or Vercel:
 
 | Item | Value |
 |------|-------|
-| Build Size | 481.29 kB (gzipped) |
-| Components | 63 |
-| Security Tests | 17/17 ✅ |
-| Build Status | ✅ READY |
-
----
-
-## 👥 Test Users
-
-### Admin
-```
-Username: entrenador
-Password: 123456
-```
-
-### Clients
-- tamara
-- pivon
-- sebas
-- sebas2
-- claudia
-- blanca
+| Build output | `dist/` |
+| Security configuration checks | 16/16 passing |
+| Feature tests | 11 passing |
+| Bundle note | Main chunk exceeds Vite's 500 kB advisory threshold |
 
 ---
 
@@ -303,7 +250,7 @@ Password: 123456
 A: `firebase deploy --only firestore:rules` then `firebase deploy --only hosting`
 
 **Q: How do I run security tests?**
-A: `npm run test:all` (runs all 17 tests)
+A: Run `npm run security:check`, `npm run test:calendar`, and `npm run test:feedback`.
 
 **Q: How do I set environment variables?**
 A: Copy `.env.example` to `.env` and fill in your Firebase credentials
@@ -312,7 +259,7 @@ A: Copy `.env.example` to `.env` and fill in your Firebase credentials
 
 ## ✅ Status
 
-✨ **ATHLOS is production-ready with full security hardening** ✨
+Static security checks pass. The main production bundle currently exceeds Vite's 500 kB advisory threshold.
 
 - ✅ 7 security phases implemented
 - ✅ 17/17 security tests passing

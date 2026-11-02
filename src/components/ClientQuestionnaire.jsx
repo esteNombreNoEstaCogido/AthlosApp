@@ -109,13 +109,20 @@ const CheckIcon = () => (
   </svg>
 );
 
-const Field = ({ field, value, onChange }) => {
-  const baseClass = 'w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-colors focus:border-amber-400';
-  const style = { backgroundColor: '#111113', borderColor: 'rgba(245, 158, 11, 0.18)', color: '#fff' };
+const NUMERIC_LIMITS = {
+  age: [13, 100], weightKg: [25, 400], heightCm: [100, 250], commitmentLevel: [1, 10],
+  trainingDays: [1, 7], sessionMinutes: [10, 240], sleepHours: [0, 24], stressLevel: [1, 10], stepsDaily: [0, 100000],
+};
+
+const Field = ({ field, value, onChange, error }) => {
+  const baseClass = `w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-colors focus:border-amber-400 ${error ? 'border-red-500' : ''}`;
+  const style = { backgroundColor: '#111113', borderColor: error ? '#ef4444' : 'rgba(245, 158, 11, 0.18)', color: '#fff' };
+  const limits = NUMERIC_LIMITS[field.name];
+  const fieldId = `questionnaire-${field.name}`;
 
   if (field.type === 'select') {
     return (
-      <select value={value} onChange={onChange} className={baseClass} style={style}>
+      <select id={fieldId} value={value} onChange={onChange} aria-invalid={!!error} aria-describedby={error ? `${fieldId}-error` : undefined} className={baseClass} style={style}>
         <option value="">Selecciona una opción</option>
         {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
@@ -124,22 +131,28 @@ const Field = ({ field, value, onChange }) => {
 
   if (field.type === 'textarea') {
     return (
-      <textarea value={value} onChange={onChange} placeholder={field.placeholder} rows={field.rows || 2} className={`${baseClass} resize-none`} style={style} />
+      <textarea id={fieldId} value={value} onChange={onChange} placeholder={field.placeholder} rows={field.rows || 2} aria-invalid={!!error} aria-describedby={error ? `${fieldId}-error` : undefined} className={`${baseClass} resize-none`} style={style} />
     );
   }
 
   return (
-    <input type={field.type || 'text'} value={value} onChange={onChange} placeholder={field.placeholder} className={baseClass} style={style} />
+    <input id={fieldId} type={field.type || 'text'} min={limits?.[0]} max={limits?.[1]} step={field.name === 'weightKg' || field.name === 'sleepHours' ? '0.1' : '1'} value={value} onChange={onChange} placeholder={field.placeholder} aria-invalid={!!error} aria-describedby={error ? `${fieldId}-error` : undefined} className={baseClass} style={style} />
   );
 };
 
 export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {}, required = true, onSubmit = async () => {} }) => {
   const [form, setForm] = useState(() => mergeInitialData(initialData, clientName));
   const [isSaving, setIsSaving] = useState(false);
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+  const [errors, setErrors] = useState({});
+  const [privacyConsent, setPrivacyConsent] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setForm(mergeInitialData(initialData, clientName));
+    setActiveSectionIndex(0);
+    setErrors({});
+    setPrivacyConsent(false);
   }, [isOpen, initialData, clientName]);
 
   const completionCount = useMemo(() => Object.entries(form).filter(([key, value]) => key !== 'additionalNotes' && String(value || '').trim()).length, [form]);
@@ -147,14 +160,57 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
   const handleChange = (field) => (e) => {
     const nextValue = e.target.value;
     setForm(prev => ({ ...prev, [field]: nextValue }));
+    setErrors(prev => ({ ...prev, [field]: '' }));
+  };
+
+  const validateSection = (sectionIndex, validateRequired = false) => {
+    const nextErrors = {};
+    QUESTION_SECTIONS[sectionIndex].fields.forEach(field => {
+      const rawValue = String(form[field.name] ?? '').trim();
+      if (validateRequired && ['name', 'age', 'mainObjective'].includes(field.name) && !rawValue) {
+        nextErrors[field.name] = 'Este campo es obligatorio.';
+        return;
+      }
+      const limits = NUMERIC_LIMITS[field.name];
+      if (!rawValue || !limits) return;
+      const value = Number(rawValue);
+      if (!Number.isFinite(value) || value < limits[0] || value > limits[1]) {
+        nextErrors[field.name] = `Introduce un valor entre ${limits[0]} y ${limits[1]}.`;
+      }
+    });
+    setErrors(prev => ({ ...prev, ...nextErrors }));
+    return nextErrors;
+  };
+
+  const goToNextSection = () => {
+    const sectionErrors = validateSection(activeSectionIndex);
+    const firstInvalidField = Object.keys(sectionErrors)[0];
+    if (firstInvalidField) {
+      document.getElementById(`questionnaire-${firstInvalidField}`)?.focus();
+      return;
+    }
+    setActiveSectionIndex(index => Math.min(index + 1, QUESTION_SECTIONS.length - 1));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSaving) return;
+    if (isSaving || activeSectionIndex < QUESTION_SECTIONS.length - 1) return;
+    const nextErrors = QUESTION_SECTIONS.reduce((acc, _, index) => ({ ...acc, ...validateSection(index, true) }), {});
+    if (Object.keys(nextErrors).length) {
+      setErrors(nextErrors);
+      const firstInvalidField = Object.keys(nextErrors)[0];
+      const sectionIndex = QUESTION_SECTIONS.findIndex(section => section.fields.some(field => field.name === firstInvalidField));
+      setActiveSectionIndex(Math.max(sectionIndex, 0));
+      requestAnimationFrame(() => document.getElementById(`questionnaire-${firstInvalidField}`)?.focus());
+      return;
+    }
+    if (!privacyConsent) {
+      setErrors(prev => ({ ...prev, privacyConsent: 'Confirma que has leído la información antes de guardar.' }));
+      return;
+    }
     setIsSaving(true);
     try {
-      await onSubmit(form);
+      await onSubmit({ ...form, privacyConsentAt: new Date().toISOString() });
     } finally {
       setIsSaving(false);
     }
@@ -199,10 +255,22 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
           </div>
 
           <div className="space-y-8 px-4 py-5 sm:px-6 sm:py-6">
-            {QUESTION_SECTIONS.map(section => {
+            <nav aria-label="Secciones del cuestionario" className="flex gap-2 overflow-x-auto pb-1">
+              {QUESTION_SECTIONS.map((section, index) => {
+                const Icon = section.icon;
+                const isCurrent = index === activeSectionIndex;
+                const isComplete = section.fields.every(field => String(form[field.name] || '').trim());
+                return <button key={section.title} type="button" aria-current={isCurrent ? 'step' : undefined} onClick={() => setActiveSectionIndex(index)} className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-[9px] font-black uppercase ${isCurrent ? 'border-amber-400 bg-amber-500 text-black' : 'border-white/10 bg-zinc-900 text-zinc-400'}`}><Icon size={13}/>{index + 1}. {section.title}{isComplete && <CheckIcon/>}</button>;
+              })}
+            </nav>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={1} aria-valuemax={QUESTION_SECTIONS.length} aria-valuenow={activeSectionIndex + 1}>
+              <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${((activeSectionIndex + 1) / QUESTION_SECTIONS.length) * 100}%` }}/>
+            </div>
+            {QUESTION_SECTIONS.map((section, sectionIndex) => {
+              if (sectionIndex !== activeSectionIndex) return null;
               const Icon = section.icon;
               return (
-                <section key={section.title} className="overflow-hidden rounded-[1.75rem] border border-white/8 bg-white/[0.03]">
+                <section key={section.title} aria-label={section.title} className="overflow-hidden rounded-[1.75rem] border border-white/8 bg-white/[0.03]">
                   <div className="flex items-center gap-3 border-b border-white/5 px-5 py-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-300"><Icon size={18} /></div>
                     <div>
@@ -215,7 +283,8 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
                     {section.fields.map(field => (
                       <label key={field.name} className={`${field.span === 2 ? 'sm:col-span-2' : ''} space-y-2`}>
                         <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">{field.label}</span>
-                        <Field field={field} value={form[field.name]} onChange={handleChange(field.name)} />
+                        <Field field={field} value={form[field.name]} onChange={handleChange(field.name)} error={errors[field.name]} />
+                        {errors[field.name] && <span id={`questionnaire-${field.name}-error`} role="alert" className="block text-xs font-semibold text-red-400">{errors[field.name]}</span>}
                       </label>
                     ))}
                   </div>
@@ -226,14 +295,31 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
             <div className="rounded-[1.5rem] border border-emerald-500/20 bg-emerald-500/8 px-5 py-4 text-sm text-emerald-100">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 rounded-full bg-emerald-500/20 p-2 text-emerald-200"><Sparkles size={14} /></div>
-                <p className="leading-relaxed">Los datos se guardan en tu perfil dentro de la app para que puedas reutilizarlos en el seguimiento y en la planificación de objetivos.</p>
+                <p className="leading-relaxed">Los datos de salud se guardan en tu perfil y solo se usan para adaptar el entrenamiento y el seguimiento. Puedes solicitar al entrenador que corrija o elimine tu información.</p>
               </div>
             </div>
 
-            <button type="submit" disabled={isSaving} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-4 text-xs font-black uppercase tracking-[0.22em] text-black transition-all active:scale-[0.99] disabled:opacity-60">
-              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckIcon />}
-              {required ? 'Guardar y continuar' : 'Guardar cambios'}
-            </button>
+            {activeSectionIndex === QUESTION_SECTIONS.length - 1 && (
+              <div className="space-y-2 rounded-2xl border border-white/10 bg-black/30 p-4">
+                <label className="flex cursor-pointer items-start gap-3 text-xs leading-relaxed text-zinc-300">
+                  <input type="checkbox" checked={privacyConsent} onChange={event => { setPrivacyConsent(event.target.checked); setErrors(prev => ({ ...prev, privacyConsent: '' })); }} className="mt-0.5 h-4 w-4 accent-amber-500" />
+                  <span>He leído cómo se utilizan mis datos de salud y autorizo su uso para personalizar mi entrenamiento y seguimiento. Puedo solicitar acceso, corrección o eliminación al entrenador.</span>
+                </label>
+                {errors.privacyConsent && <p role="alert" className="text-xs font-semibold text-red-400">{errors.privacyConsent}</p>}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              {activeSectionIndex > 0 && <button type="button" onClick={() => setActiveSectionIndex(index => Math.max(index - 1, 0))} className="flex-1 rounded-2xl border border-white/10 bg-zinc-900 px-4 py-4 text-xs font-black uppercase text-zinc-200">Anterior</button>}
+              {activeSectionIndex < QUESTION_SECTIONS.length - 1 ? (
+                <button type="button" onClick={goToNextSection} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-4 text-xs font-black uppercase tracking-[0.22em] text-black">Continuar <span aria-hidden="true">→</span></button>
+              ) : (
+                <button type="submit" disabled={isSaving} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-4 text-xs font-black uppercase tracking-[0.22em] text-black transition-all active:scale-[0.99] disabled:opacity-60">
+                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckIcon />}
+                  {required ? 'Guardar y continuar' : 'Guardar cambios'}
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

@@ -55,21 +55,21 @@ export const AthlosBrandHeader = ({
   return (
     <div 
       style={{ backgroundColor: colors.dark, borderBottomColor: colors.accent }}
-      className="w-full pt-8 pb-6 shadow-2xl border-b-2"
+      className="w-full border-b py-3 shadow-xl"
     >
       {/* Logo Section */}
-      <div className="flex justify-center mb-5">
+      <div className="flex justify-center mb-2">
         <div className="relative">
           {/* Glow effect */}
           <div 
-            className="absolute inset-0 blur-3xl opacity-25 rounded-full"
-            style={{ backgroundColor: colors.accent, width: '200px', height: '200px', left: '-20px', top: '-20px' }}
+            className="absolute inset-0 rounded-full opacity-20 blur-2xl"
+            style={{ backgroundColor: colors.accent, width: '96px', height: '96px', left: '-12px', top: '-8px' }}
           />
           {/* Logo container */}
           <div className="relative z-10 flex flex-col items-center">
-            <img src="/athlos-logo.png" alt="Athlos" className="w-40 h-40 object-contain drop-shadow-[0_0_30px_rgba(212,175,55,0.4)]" />
+            <img src="/athlos-logo.png" alt="Athlos" className="h-16 w-16 object-contain drop-shadow-[0_0_16px_rgba(212,175,55,0.35)]" />
             <h1 
-              className="text-xl font-black tracking-tight text-center -mt-1"
+              className="-mt-1 text-base font-black tracking-tight text-center"
               style={{ color: colors.accent, letterSpacing: '-0.5px' }}
             >
               Entrenamiento Premium
@@ -85,7 +85,7 @@ export const AthlosBrandHeader = ({
       </div>
 
       {/* Daily Motivational Phrase */}
-      <div className="max-w-2xl mx-auto px-4">
+      <div className="mx-auto max-w-md px-4">
         {isEditing && isAdmin ? (
           <div className="space-y-3">
             <textarea
@@ -116,15 +116,15 @@ export const AthlosBrandHeader = ({
           </div>
         ) : (
           <div 
-            className="p-4 rounded-xl backdrop-blur text-center cursor-pointer hover:shadow-lg transition-all relative group"
+            className={`relative rounded-xl px-3 py-2 text-center backdrop-blur transition-all ${isAdmin ? 'group cursor-pointer hover:shadow-lg' : ''}`}
             style={{
               backgroundColor: colors.secondary,
-              borderLeft: `3px solid ${colors.accent}`,
+              borderLeft: `2px solid ${colors.accent}`,
             }}
             onClick={() => { if (isAdmin) { setEditValue(currentPhrase); setIsEditing(true); } }}
           >
             <div 
-              className="text-lg font-bold leading-relaxed italic"
+              className="text-sm font-bold leading-snug italic"
               style={{ color: colors.accent }}
             >
               "{currentPhrase}"
@@ -145,7 +145,7 @@ export const AthlosBrandHeader = ({
 
       {/* Admin Indicator */}
       {isAdmin && !isEditing && (
-        <div className="flex justify-center mt-4">
+        <div className="flex justify-center mt-2">
           <div 
             className="flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full"
             style={{ backgroundColor: colors.secondary, color: colors.accent }}

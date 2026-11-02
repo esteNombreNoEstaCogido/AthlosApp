@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { TrendingUp, TrendingDown, Plus, X, Scale, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Plus, X, Scale, Loader2, Edit3, Trash2, CheckCircle2 } from 'lucide-react';
 
 const MetricInput = ({ label, value, onChange, unit, placeholder, palette }) => (
   <div className="space-y-1">
@@ -34,13 +34,14 @@ const CustomTooltip = ({ active, payload, label, palette }) => {
   );
 };
 
-export const ProgressTracker = ({ stats = [], onAddStats, palette, isAdmin }) => {
+export const ProgressTracker = ({ stats = [], onAddStats, onUpdateStats, onDeleteStats, palette, isAdmin }) => {
   const [showForm, setShowForm] = useState(false);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
   const [boneMass, setBoneMass] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [activeMetric, setActiveMetric] = useState('weight');
+  const [editingEntryId, setEditingEntryId] = useState(null);
 
   const sortedStats = useMemo(() => 
     [...stats].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)),
@@ -74,14 +75,16 @@ export const ProgressTracker = ({ stats = [], onAddStats, palette, isAdmin }) =>
 
     setIsSaving(true);
     const entry = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
+      id: editingEntryId ?? Date.now(),
+      timestamp: editingEntryId ? (stats.find(item => item.id === editingEntryId)?.timestamp || new Date().toISOString()) : new Date().toISOString(),
       ...(w > 0 && w < 500 && { weight: w }),
       ...(bf > 0 && bf < 100 && { bodyFat: bf }),
       ...(bm > 0 && bm < 50 && { boneMass: bm }),
     };
-    await onAddStats(entry);
+    if (editingEntryId !== null && onUpdateStats) await onUpdateStats(editingEntryId, entry);
+    else await onAddStats(entry);
     setWeight(''); setBodyFat(''); setBoneMass('');
+    setEditingEntryId(null);
     setShowForm(false);
     setIsSaving(false);
   };
@@ -171,6 +174,24 @@ export const ProgressTracker = ({ stats = [], onAddStats, palette, isAdmin }) =>
         </div>
       )}
 
+      {sortedStats.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-[10px] font-black uppercase tracking-wider" style={{ color: `${palette?.text || '#fff'}70` }}>Historial de mediciones</h4>
+          {[...sortedStats].reverse().map(entry => (
+            <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border p-3" style={{ backgroundColor: palette?.card || '#18181b', borderColor: `${accent}20` }}>
+              <div>
+                <p className="text-[9px] font-bold" style={{ color: `${palette?.text || '#fff'}70` }}>{new Date(entry.timestamp).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                <p className="mt-1 text-xs font-black" style={{ color: palette?.text || '#fff' }}>{entry.weight ? `${entry.weight} kg` : ''}{entry.bodyFat ? ` · ${entry.bodyFat}% grasa` : ''}{entry.boneMass ? ` · ${entry.boneMass} kg masa ósea` : ''}</p>
+              </div>
+              <div className="flex gap-2">
+                {onUpdateStats && <button aria-label="Editar medición" onClick={() => { setEditingEntryId(entry.id); setWeight(String(entry.weight ?? '')); setBodyFat(String(entry.bodyFat ?? '')); setBoneMass(String(entry.boneMass ?? '')); setShowForm(true); }} className="rounded-lg p-2 text-amber-500"><Edit3 size={14}/></button>}
+                {onDeleteStats && <button aria-label="Eliminar medición" onClick={() => { if (window.confirm('¿Eliminar esta medición?')) onDeleteStats(entry.id); }} className="rounded-lg p-2 text-red-400"><Trash2 size={14}/></button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Add Button / Form */}
       {!showForm ? (
         <button
@@ -183,8 +204,8 @@ export const ProgressTracker = ({ stats = [], onAddStats, palette, isAdmin }) =>
       ) : (
         <div className="p-5 rounded-[2rem] border space-y-4 animate-in slide-in-from-bottom" style={{ backgroundColor: palette?.card || '#18181b', borderColor: `${accent}30` }}>
           <div className="flex justify-between items-center">
-            <h4 className="text-xs font-black uppercase" style={{ color: accent }}>Nuevo Registro</h4>
-            <button onClick={() => setShowForm(false)}><X size={18} style={{ color: `${palette?.text || '#fff'}40` }}/></button>
+            <h4 className="text-xs font-black uppercase" style={{ color: accent }}>{editingEntryId !== null ? 'Editar Registro' : 'Nuevo Registro'}</h4>
+            <button onClick={() => { setShowForm(false); setEditingEntryId(null); }} aria-label="Cerrar formulario"><X size={18} style={{ color: `${palette?.text || '#fff'}40` }}/></button>
           </div>
           <MetricInput label="Peso Corporal" value={weight} onChange={setWeight} unit="kg" placeholder="75.0" palette={palette} />
           <MetricInput label="Grasa Corporal" value={bodyFat} onChange={setBodyFat} unit="%" placeholder="18.0" palette={palette} />
@@ -195,8 +216,8 @@ export const ProgressTracker = ({ stats = [], onAddStats, palette, isAdmin }) =>
             className="w-full py-4 rounded-xl font-black text-[10px] uppercase transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2"
             style={{ backgroundColor: accent, color: palette?.dark || '#000' }}
           >
-            {isSaving ? <Loader2 size={16} className="animate-spin"/> : <Plus size={16}/>}
-            Guardar Registro
+            {isSaving ? <Loader2 size={16} className="animate-spin"/> : editingEntryId !== null ? <CheckCircle2 size={16}/> : <Plus size={16}/>}
+            {editingEntryId !== null ? 'Guardar Cambios' : 'Guardar Registro'}
           </button>
         </div>
       )}
