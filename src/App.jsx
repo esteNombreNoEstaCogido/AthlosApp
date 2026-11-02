@@ -1237,6 +1237,8 @@ export default function App() {
   });
   const [isCalendarExpanded, setIsCalendarExpanded] = useState(true);
   const [workoutView, setWorkoutView] = useState('list');
+  const [dayExerciseView, setDayExerciseView] = useState('list');
+  const [selectedDayExerciseIndex, setSelectedDayExerciseIndex] = useState(null);
   const [followUpActionTitle, setFollowUpActionTitle] = useState('');
   const [followUpActionDueDate, setFollowUpActionDueDate] = useState('');
 
@@ -2627,7 +2629,13 @@ Reglas:
     setShowAiGenerator(false);
   };
 
-  const navigateTo = (tab, day = null) => { setActiveTab(tab); setSelectedDay(day); setDaySearchQuery(""); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const navigateTo = (tab, day = null) => {
+    setActiveTab(tab);
+    setSelectedDay(day);
+    setDaySearchQuery("");
+    setSelectedDayExerciseIndex(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const updateImageHook = useCallback((dayId, exName, newImgBase64) => {
     const targetClientId = editingClientId || currentClientId;
@@ -4015,8 +4023,115 @@ Reglas:
                 <input type="text" placeholder="Buscar ejercicio..." value={daySearchQuery} onChange={e => setDaySearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 rounded-2xl border text-sm font-medium outline-none" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' } : { backgroundColor: '#f9fafb', borderColor: '#f3f4f6', color: '#111827' }} />
               </div>
             ) : null; })()}
+            {!isAdminMode && (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-wider text-amber-400">Ejercicios</p>
+                <div role="group" aria-label="Forma de ver los ejercicios" className="flex items-center rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
+                  <button
+                    type="button"
+                    onClick={() => { setDayExerciseView('list'); setSelectedDayExerciseIndex(null); }}
+                    aria-label="Ver ejercicios en lista"
+                    aria-pressed={dayExerciseView === 'list'}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[9px] font-bold transition-colors ${dayExerciseView === 'list' ? 'bg-amber-500/15 text-amber-300' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    <List size={14}/> Lista
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDayExerciseView('grid'); setSelectedDayExerciseIndex(null); }}
+                    aria-label="Ver ejercicios en mosaico"
+                    aria-pressed={dayExerciseView === 'grid'}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[9px] font-bold transition-colors ${dayExerciseView === 'grid' ? 'bg-amber-500/15 text-amber-300' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    <LayoutGrid size={14}/> Mosaico
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="space-y-4">
               {(() => { const liveDay = validDays.find(d => d.id === selectedDay.id) || selectedDay; const allExercises = Array.isArray(liveDay.exercises) ? liveDay.exercises : []; const filtered = daySearchQuery.trim() ? allExercises.filter(ex => (ex.name || '').toLowerCase().includes(daySearchQuery.toLowerCase()) || (ex.mus || '').toLowerCase().includes(daySearchQuery.toLowerCase())) : allExercises;
+              if (!isAdminMode && dayExerciseView === 'grid') {
+                if (selectedDayExerciseIndex !== null) {
+                  const exercise = allExercises[selectedDayExerciseIndex];
+                  if (exercise) {
+                    return (
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDayExerciseIndex(null)}
+                          className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] font-bold text-amber-300 transition-colors hover:bg-amber-500/15"
+                        >
+                          <ArrowLeft size={14}/> Volver al mosaico
+                        </button>
+                        <ExerciseCard
+                          key={`${liveDay.id}-${selectedDayExerciseIndex}`}
+                          ex={exercise}
+                          workoutLogs={workoutLogs}
+                          isAdmin={isAdminMode}
+                          onAddLog={addLogRecord}
+                          onUpdateLog={updateLogRecord}
+                          onDeleteLog={deleteLogRecord}
+                          onStartTimer={startTimerHook}
+                          accentColor={client.color}
+                          onUpdateImage={updateImageHook}
+                          onOpenImageManager={openImageManagerCb}
+                          dayId={liveDay.id}
+                          dayTitle={liveDay.title}
+                          onAddExerciseNote={addExerciseNote}
+                          exerciseNotes={client.exerciseNotes?.[exercise.name] || []}
+                          exerciseFeedback={client.exerciseFeedback || []}
+                          onAddExerciseFeedback={addExerciseFeedback}
+                          canSubmitFeedback={!isFirebaseAdmin}
+                          palette={palette}
+                        />
+                      </div>
+                    );
+                  }
+                }
+
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    {filtered.map(exercise => {
+                      const originalIndex = allExercises.indexOf(exercise);
+                      const exerciseLogs = Array.isArray(workoutLogs[exercise.name]) ? workoutLogs[exercise.name] : [];
+                      return (
+                        <button
+                          key={`${liveDay.id}-tile-${originalIndex}`}
+                          type="button"
+                          onClick={() => setSelectedDayExerciseIndex(originalIndex)}
+                          className="group min-w-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 text-left shadow-sm transition-all hover:border-amber-500/40 active:scale-[0.98]"
+                          style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : undefined}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden bg-zinc-800">
+                            <img
+                              src={exercise.img || FALLBACK_IMG}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              onError={imgError}
+                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                            <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-md bg-black/70 px-2 py-1 text-[8px] font-black uppercase text-amber-300 backdrop-blur-sm">
+                              {String(exercise.mus || 'Ejercicio')}
+                            </span>
+                            {exerciseLogs[0]?.weight && (
+                              <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-1 text-[9px] font-bold text-white backdrop-blur-sm">
+                                {exerciseLogs[0].weight} kg
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-3">
+                            <h3 className="line-clamp-2 min-h-9 break-words text-xs font-black leading-snug">{String(exercise.name || 'Ejercicio')}</h3>
+                            <p className="mt-1 text-[9px] font-bold text-zinc-400">{String(exercise.s || '—')} series · {String(exercise.r || '—')} reps</p>
+                            <p className="mt-2 text-[8px] font-bold uppercase tracking-wide text-amber-400">Toca para registrar</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {filtered.length === 0 && <p className="col-span-2 py-8 text-center text-xs text-zinc-500">No hay ejercicios que coincidan.</p>}
+                  </div>
+                );
+              }
               const items = [];
               let i = 0;
               while (i < filtered.length) {
