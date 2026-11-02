@@ -9,6 +9,9 @@ import {
 } from "./security/validationSchemas.js";
 import { AthlosSplashScreen } from "./components/SplashScreen.jsx";
 import { AthlosBrandHeader } from "./components/AthlosBrandHeader.jsx";
+import { ClientHeaderCard } from "./components/ClientHeaderCard.jsx";
+import { WeeklyProgress } from "./components/WeeklyProgress.jsx";
+import { motion, useReducedMotion } from "framer-motion";
 import { ClientQuestionnaire } from "./components/ClientQuestionnaire.jsx";
 import { ColorPalettePicker } from "./components/ColorPalettePicker.jsx";
 import { BackButtonExitHandler } from "./components/BackButtonExitHandler.jsx";
@@ -1154,6 +1157,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onUpdateLog, onDeleteLog
 // COMPONENTE APP
 // ==========================================
 export default function App() {
+  const prefersReducedMotion = useReducedMotion();
   const [db, setDb] = useState({});
   const [dataLoaded, setDataLoaded] = useState(false);
   const [authReady, setAuthReady] = useState(false);
@@ -2888,9 +2892,7 @@ Reglas:
   const calendarCells = useMemo(() => {
     return buildMonthCalendarDays(calendarMonth.getFullYear(), calendarMonth.getMonth());
   }, [calendarMonth]);
-  const weeklyGoal = getWeeklyGoalProgress(weeklySummary.daysThisWeek, client.weeklyWorkoutGoal);
-  const weeklyWorkoutGoal = weeklyGoal.goal;
-  const weeklyGoalProgress = weeklyGoal.percent;
+  const weeklyWorkoutGoal = getWeeklyGoalProgress(weeklySummary.daysThisWeek, client.weeklyWorkoutGoal).goal;
   const adminClientEntries = useMemo(() => Object.entries(db)
     .filter(([id]) => id !== loggedInUser && id !== '_deleted_users')
     .map(([id, profile]) => ({ id, profile, followUp: getClientFollowUp(profile) })), [db, loggedInUser]);
@@ -3083,7 +3085,10 @@ Reglas:
       />
       <div className={`max-w-md mx-auto p-6 pb-40 ${isAdminMode ? 'bg-black text-white' : ''}`}>
         <div className="flex justify-between items-center mb-6">
-           <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`} /><span className="text-[9px] font-black uppercase" style={palette ? { color: `${palette.text}80` } : { color: '#a1a1aa' }}>{isOnline ? 'Online' : 'Offline'}</span></div>
+           <div className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider ${isOnline ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border-red-500/20 bg-red-500/10 text-red-400'}`}>
+             <span className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+             <span>{isOnline ? 'Online' : 'Offline'}</span>
+           </div>
            <div className="flex gap-2">
               {isAdminMode && <button onClick={() => setIsAdminMode(false)} className="bg-blue-500/10 text-blue-500 p-2 rounded-xl text-xs font-bold px-3">Ver como cliente</button>}
               {!isAdminMode && isFirebaseAdmin && <button onClick={() => setIsAdminMode(true)} className="bg-amber-500/10 text-amber-500 p-2 rounded-xl"><Crown size={18}/></button>}
@@ -3103,35 +3108,40 @@ Reglas:
               onAdminEditPhrase={saveMotivationalPhrase}
             />
             
-            <div className={`bg-gradient-to-br ${isAdminMode && !isEditingClientRoutine ? "from-zinc-800 to-zinc-900 border border-zinc-700" : String(client.color || "from-blue-600 to-indigo-500")} p-5 rounded-[2rem] text-white shadow-xl relative overflow-hidden`}>
-              <div className="flex flex-col gap-1 relative z-10">
-                 {isAdminMode && !isEditingClientRoutine ? (
-                   <>
-                     <input defaultValue={String(client.name || "Cliente")} onBlur={e => modifyClientData('name', e.target.value)} className="bg-transparent text-3xl font-black uppercase outline-none w-full" />
-                     <input defaultValue={String(client.subtitle || "")} onBlur={e => modifyClientData('subtitle', e.target.value)} className="bg-transparent text-sm font-medium italic opacity-80 outline-none w-full" />
-                   </>
-                 ) : (
-                   <>
-                     <div className="flex items-center gap-4">
-                       <button onClick={() => handleAvatarUpload(currentClientId)} className="relative w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0 group active:scale-95 transition-transform">
-                         {client.avatar ? <img src={client.avatar} alt="" className="w-full h-full object-cover" /> : <User size={24} className="text-white/60" />}
-                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={14} className="text-white" /></div>
-                       </button>
-                       <div>
-                         <h1 className="text-2xl font-black uppercase tracking-tight">{String(client.name || "Cliente")}</h1>
-                         <p className="text-sm font-medium italic opacity-80">{String(client.subtitle || "")}</p>
-                       </div>
-                     </div>
-                   </>
-                 )}
+            {isAdminMode ? (
+              <div className="relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-zinc-900 via-zinc-900/90 to-black p-5 text-white shadow-xl">
+                {!isEditingClientRoutine ? (
+                  <div className="relative z-10 flex flex-col gap-1">
+                    <input defaultValue={String(client.name || "Cliente")} onBlur={e => modifyClientData('name', e.target.value)} className="w-full bg-transparent text-3xl font-black uppercase outline-none" />
+                    <input defaultValue={String(client.subtitle || "")} onBlur={e => modifyClientData('subtitle', e.target.value)} className="bg-transparent text-sm font-medium italic opacity-80 outline-none" />
+                  </div>
+                ) : (
+                  <div className="relative z-10 flex items-center gap-4">
+                    <button onClick={() => handleAvatarUpload(currentClientId)} className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-500/30 bg-amber-500/10 active:scale-95">
+                      {client.avatar ? <img src={client.avatar} alt="" className="h-full w-full object-cover" /> : <User size={24} className="text-amber-400/70" />}
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"><Camera size={14} className="text-white" /></span>
+                    </button>
+                    <div className="min-w-0">
+                      <h1 className="truncate text-2xl font-black uppercase tracking-tight">{String(client.name || "Cliente")}</h1>
+                      <p className="line-clamp-2 text-sm font-medium italic text-zinc-400">{String(client.subtitle || "")}</p>
+                    </div>
+                  </div>
+                )}
+                {isEditingClientRoutine && (
+                  <div className="absolute top-4 right-4 z-20">
+                    <button onClick={() => { setIsEditingClientRoutine(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsAdminMode(true); }} className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[9px] font-black uppercase text-amber-400 hover:bg-amber-500/20">← Volver Admin</button>
+                  </div>
+                )}
+                <Zap className="pointer-events-none absolute -bottom-4 -right-4 h-32 w-32 rotate-12 text-amber-400 opacity-[0.06]" />
               </div>
-              {isEditingClientRoutine && (
-                <div className="absolute top-4 right-4 z-20">
-                  <button onClick={() => { setIsEditingClientRoutine(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsAdminMode(true); }} className="bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase">← Volver Admin</button>
-                </div>
-              )}
-              <Zap className="absolute -bottom-4 -right-4 w-32 h-32 opacity-10 rotate-12" />
-            </div>
+            ) : (
+              <ClientHeaderCard
+                name={client.name}
+                plan={client.subtitle}
+                avatar={client.avatar}
+                onAvatarClick={() => handleAvatarUpload(currentClientId)}
+              />
+            )}
 
             {isAdminMode && (
               <div className="bg-zinc-900 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-6 mt-8">
@@ -3149,7 +3159,7 @@ Reglas:
                 </div>
                 {!clientDetailOnly && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {[
                         { key: 'attention', label: 'Revisar', value: adminFollowUpCounts.attention, color: 'text-amber-300' },
                         { key: 'exercise-feedback', label: 'Opiniones nuevas', value: adminFollowUpCounts.pendingFeedback, color: 'text-rose-300' },
@@ -3158,8 +3168,8 @@ Reglas:
                         { key: 'inactive', label: '+14 días', value: adminFollowUpCounts.inactive, color: 'text-orange-300' },
                         { key: 'no-training', label: 'Sin registros', value: adminFollowUpCounts['no-training'], color: 'text-zinc-300' }
                       ].map(item => (
-                        <button key={item.key} onClick={() => setClientFollowUpFilter(item.key)} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-left hover:border-amber-500/30">
-                          <span className="block text-[8px] font-black uppercase tracking-wider text-zinc-500">{item.label}</span>
+                        <button key={item.key} onClick={() => setClientFollowUpFilter(item.key)} aria-pressed={clientFollowUpFilter === item.key} className="min-h-[76px] min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/70 p-2.5 text-left hover:border-amber-500/30">
+                          <span className="block break-words text-[7px] font-black uppercase leading-tight text-zinc-400 sm:text-[8px]">{item.label}</span>
                           <span className={`mt-1 block text-xl font-black ${item.color}`}>{item.value}</span>
                         </button>
                       ))}
@@ -3809,38 +3819,19 @@ Reglas:
             )}
 
             {!isAdminMode && (
-              <section className="mt-6 overflow-hidden rounded-[2rem] border shadow-sm" aria-labelledby="consistency-title" style={palette ? { backgroundColor: palette.card, borderColor: `${palette.accent}25`, color: palette.text } : { backgroundColor: '#18181b', borderColor: '#27272a', color: 'white' }}>
-                <div className="space-y-5 p-5">
-                  <div className="flex items-start justify-between gap-3">
+              <section className="mt-6 space-y-3" aria-labelledby="consistency-title">
+                <WeeklyProgress
+                  currentSessions={weeklySummary.daysThisWeek}
+                  targetSessions={weeklyWorkoutGoal}
+                  onTargetChange={goal => updateUserInCloud(currentClientId, user => ({ ...user, weeklyWorkoutGoal: goal }))}
+                  disabled={isFirebaseAdmin}
+                  palette={palette}
+                />
+                {streakCount > 0 && <p className="px-2 text-[8px] font-bold opacity-40">Racha actual: {streakCount} {streakCount === 1 ? 'día' : 'días'} · las pausas también forman parte del progreso.</p>}
+
+                <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/80 backdrop-blur-md" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}25`, color: palette.text } : undefined}>
+                  <div className="space-y-5 p-4">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <CalendarDays size={16} style={palette ? { color: palette.accent } : { color: '#f59e0b' }}/>
-                        <h3 id="consistency-title" className="text-[10px] font-black uppercase tracking-widest" style={palette ? { color: palette.accent } : { color: '#f59e0b' }}>Tu constancia</h3>
-                      </div>
-                      <p className="mt-1 text-[9px] opacity-50">Cada sesión cuenta. El calendario no se reinicia ni te penaliza.</p>
-                    </div>
-                    <label className="shrink-0 text-right">
-                      <span className="block text-[8px] font-bold uppercase opacity-45">Meta semanal</span>
-                      <select value={weeklyWorkoutGoal} disabled={isFirebaseAdmin} onChange={event => updateUserInCloud(currentClientId, user => ({ ...user, weeklyWorkoutGoal: Number(event.target.value) }))} aria-label="Meta semanal de entrenamientos" className="mt-1 rounded-lg border px-2 py-1.5 text-xs font-black disabled:opacity-70" style={palette ? { backgroundColor: palette.dark, color: palette.text, borderColor: `${palette.accent}35` } : { backgroundColor: '#09090b', color: 'white', borderColor: '#3f3f46' }}>
-                        {[1, 2, 3, 4, 5, 6, 7].map(goal => <option key={goal} value={goal}>{goal} días</option>)}
-                      </select>
-                    </label>
-                  </div>
-
-                  <div>
-                    <div className="mb-2 flex items-end justify-between gap-3">
-                      <p className="text-2xl font-black">{weeklySummary.daysThisWeek}<span className="ml-1 text-xs font-bold opacity-50">/ {weeklyWorkoutGoal} sesiones</span></p>
-                      <p className="text-right text-[9px] font-bold opacity-55">{weeklyGoalProgress >= 100 ? 'Meta semanal alcanzada. Buen trabajo.' : `A tu ritmo: ${weeklyWorkoutGoal - weeklySummary.daysThisWeek} ${weeklyWorkoutGoal - weeklySummary.daysThisWeek === 1 ? 'sesión' : 'sesiones'} para tu meta`}</p>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-black/20" role="progressbar" aria-label="Progreso del objetivo semanal" aria-valuemin={0} aria-valuemax={weeklyWorkoutGoal} aria-valuenow={Math.min(weeklySummary.daysThisWeek, weeklyWorkoutGoal)}>
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${weeklyGoalProgress}%`, backgroundColor: palette?.accent || '#f59e0b' }}/>
-                    </div>
-                    {streakCount > 0 && <p className="mt-2 text-[8px] font-bold opacity-40">Racha actual: {streakCount} {streakCount === 1 ? 'día' : 'días'} · las pausas también forman parte del progreso.</p>}
-                  </div>
-
-                  <div className="h-px bg-white/10"/>
-
-                  <div>
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Mes anterior" className="rounded-lg p-2 opacity-60 hover:opacity-100"><ChevronLeft size={16}/></button>
                       <h4 className="text-xs font-black capitalize">{calendarMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</h4>
@@ -3859,12 +3850,13 @@ Reglas:
                     <p className="mt-2 text-center text-[8px] opacity-40">Los días marcados tienen entrenamientos registrados.</p>
                   </div>
 
-                  {(weeklySummary.totalSets > 0 || weeklySummary.totalVolume > 0) && (
-                    <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-4 text-center">
+                    {(weeklySummary.totalSets > 0 || weeklySummary.totalVolume > 0) && (
+                    <div className="grid grid-cols-2 gap-3 border-t border-zinc-700/70 pt-4 text-center">
                       <div><p className="text-lg font-black">{weeklySummary.totalSets}</p><p className="text-[8px] font-bold uppercase opacity-40">Series esta semana</p></div>
                       <div><p className="text-lg font-black">{weeklySummary.totalVolume > 1000 ? `${(weeklySummary.totalVolume / 1000).toFixed(1)}k` : weeklySummary.totalVolume}</p><p className="text-[8px] font-bold uppercase opacity-40">Kg registrados</p></div>
                     </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </section>
             )}
@@ -3873,14 +3865,18 @@ Reglas:
               {validDays.length === 0 && !isAdminMode ? (
                 <div className="text-center py-10 opacity-40 font-bold text-sm italic">Rutina en construcción...</div>
               ) : null}
-              {validDays.map(day => {
+              {validDays.map((day, index) => {
                 const DayIcon = getDayIcon(day.icon);
                 const isAdminEditing = isAdminMode && isEditingClientRoutine;
                 const isDragging = draggedDayId === day.id;
                 const isDragOver = dragOverDayId === day.id && draggedDayId !== day.id;
                 const completedToday = !isAdminMode && isDayCompletedToday(day, workoutLogs);
                 return (
-                <button key={day.id} data-day-id={day.id}
+                <motion.button key={day.id} data-day-id={day.id}
+                  initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: prefersReducedMotion ? 0 : 0.28, delay: prefersReducedMotion ? 0 : Math.min(index, 4) * 0.045, ease: 'easeOut' }}
+                  whileTap={!prefersReducedMotion && !isAdminEditing ? { scale: 0.985 } : undefined}
                   onClick={() => { if (touchDragState) return; isAdminEditing ? setEditingDayId(day.id) : navigateTo("day", day); }}
                   draggable={isAdminEditing}
                   onDragStart={isAdminEditing ? (e) => { setDraggedDayId(day.id); e.dataTransfer.effectAllowed = 'move'; } : undefined}
@@ -3890,7 +3886,7 @@ Reglas:
                   onTouchMove={isAdminEditing ? handleDayTouchMove : undefined}
                   onTouchEnd={isAdminEditing ? handleDayTouchEnd : undefined}
                   onTouchCancel={isAdminEditing ? () => { clearTimeout(touchTimerRef.current); setTouchDragState(null); setDraggedDayId(null); setDragOverDayId(null); } : undefined}
-                  className={`flex items-center justify-between p-6 rounded-[2rem] border shadow-sm text-left transition-all ${isDragging ? 'opacity-40 scale-95' : 'active:scale-95'} ${isDragOver ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''} ${completedToday ? 'ring-2 ring-emerald-500/40' : ''}`}
+                  className={`flex items-center justify-between p-6 rounded-[2rem] border shadow-sm text-left transition-all ${isDragging ? 'opacity-40 scale-95' : ''} ${isDragOver ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''} ${completedToday ? 'ring-2 ring-emerald-500/40' : ''}`}
                   style={palette ? { backgroundColor: palette.card, borderColor: completedToday ? '#10b98140' : isDragOver ? '#f59e0b' : `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: isDragOver ? '#f59e0b' : '#27272a', color: 'white' } : {}}>
                   <div className="flex items-center gap-4">
                     {isAdminEditing && <div className="text-zinc-600 touch-none"><GripVertical size={18}/></div>}
@@ -3903,7 +3899,7 @@ Reglas:
                       )}
                     </div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3>{completedToday && <p className="text-[8px] font-bold text-emerald-500 mt-0.5">✓ Hecho hoy</p>}{isAdminEditing && <p className="text-[8px] font-bold text-cyan-500/70 mt-0.5 flex items-center gap-1"><Database size={8}/> Guardado en servidor</p>}</div></div>
                   <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
-                </button>
+                </motion.button>
               );})}
             </div>
 
