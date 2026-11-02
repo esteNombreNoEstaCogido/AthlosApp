@@ -2,10 +2,6 @@
   "appId": "com.athlos.app",
   "appName": "Athlos",
   "webDir": "dist",
-  "server": {
-    "url": "https://athlos.vercel.app",
-    "androidScheme": "https"
-  },
   "android": {
     "backgroundColor": "#09090b",
     "allowMixedContent": false,
