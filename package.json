@@ -8,6 +8,7 @@
     "build": "node scripts/validateEnv.cjs && vite build",
     "security:check": "node scripts/phase6_securityTests.js && node scripts/check-rules.js",
     "test:calendar": "node --test scripts/workoutCalendar.test.js",
+    "test:workout-progress": "node --test scripts/workoutProgress.test.js",
     "test:feedback": "node --test scripts/exerciseFeedback.test.js",
     "test:exercises": "node --test scripts/workoutExercises.test.js",
     "preview": "vite preview",

@@ -24,6 +24,7 @@ import { AdminExerciseFeedbackInbox, ClientExerciseFeedback } from "./components
 import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
 import { parseWorkoutLogDate as parseDateLog, toLocalDateKey, buildMonthCalendarDays, getWeeklyGoalProgress, getTrainingDateKeys, recordTrainingDay } from "./utils/workoutCalendar.js";
 import { appendExerciseToWorkoutDay, removeExerciseFromWorkoutDay } from "./utils/workoutExercises.js";
+import { getLatestWeightProgress } from "./utils/workoutProgress.js";
 import html2pdf from "html2pdf.js/dist/html2pdf.bundle.min.js";
 // Importaciones de Firebase
 import { initializeApp } from "firebase/app";
@@ -41,11 +42,11 @@ import {
 import {
   Dumbbell, Flame, Info, ChevronRight, ArrowLeft, User, Heart, Youtube, 
   PlusCircle, History, Trash2, Clock, MessageSquareHeart, X, Zap, Users, 
-  Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, ChevronLeft,
+  Settings, Plus, Edit3, TrendingUp, Trophy, Crown, LayoutDashboard, ChevronLeft, ChevronDown, ChevronUp,
   PlayCircle, Calculator, Brain, Loader2, LogOut, Key, CheckCircle2, Sparkles,
   Camera, Eye, Download, TrendingDown, Scale, Image, RefreshCw, Database,
   Swords, Target, Shield, Bike, Footprints, Mountain, Timer, Activity,
-  HeartPulse, GripVertical, Search, CalendarDays
+  HeartPulse, GripVertical, Search, CalendarDays, LayoutGrid, List
 } from "lucide-react";
 
 // Iconos predefinidos para días de entrenamiento (admin puede elegir)
@@ -655,18 +656,20 @@ const MiniProgressChart = memo(({ data, color, isAdmin, mode, exSets }) => {
 });
 
 const ProgressBar = ({ label, current, previous, color = "#f59e0b" }) => {
-  const maxVal = Math.max(current, previous, 1);
+  const maxVal = Math.max(current, previous || 0, 1);
   const currentPercent = (current / maxVal) * 100;
-  const prevPercent = (previous / maxVal) * 100;
-  const change = previous ? (((current - previous) / previous) * 100).toFixed(1) : 0;
+  const prevPercent = ((previous || 0) / maxVal) * 100;
+  const change = previous > 0 ? ((current - previous) / previous) * 100 : null;
   const isGain = change > 0;
+  const isLoss = change < 0;
+  const changeColor = isGain ? 'text-green-500' : isLoss ? 'text-red-500' : 'text-zinc-400';
   
   return (
     <div className="space-y-4 mb-4">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-black text-white uppercase">{label}</span>
-        <span className={`text-[9px] font-bold ${isGain ? 'text-green-500' : 'text-red-500'}`}>
-          {isGain ? '↑' : '↓'} {Math.abs(change)}%
+        <span className={`text-[9px] font-bold ${changeColor}`}>
+          {change === null ? '— Sin referencia' : change === 0 ? '— 0.0%' : `${isGain ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`}
         </span>
       </div>
       <div className="relative h-6 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
@@ -1232,6 +1235,8 @@ export default function App() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [isCalendarExpanded, setIsCalendarExpanded] = useState(true);
+  const [workoutView, setWorkoutView] = useState('list');
   const [followUpActionTitle, setFollowUpActionTitle] = useState('');
   const [followUpActionDueDate, setFollowUpActionDueDate] = useState('');
 
@@ -3831,11 +3836,36 @@ Reglas:
 
                 <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/80 backdrop-blur-md" style={palette ? { backgroundColor: `${palette.card}ee`, borderColor: `${palette.accent}25`, color: palette.text } : undefined}>
                   <div className="space-y-5 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-[10px] font-black uppercase tracking-wider text-amber-400">Calendario de actividad</h3>
+                        <p className="mt-0.5 text-[9px] capitalize opacity-50">{calendarMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsCalendarExpanded(expanded => !expanded)}
+                        aria-expanded={isCalendarExpanded}
+                        aria-controls="client-activity-calendar"
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[9px] font-bold text-amber-300 transition-colors hover:bg-amber-500/15"
+                      >
+                        {isCalendarExpanded ? 'Minimizar' : 'Mostrar'}
+                        {isCalendarExpanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                      </button>
+                    </div>
+                    <motion.div
+                      id="client-activity-calendar"
+                      initial={false}
+                      animate={{ height: isCalendarExpanded ? 'auto' : 0, opacity: isCalendarExpanded ? 1 : 0 }}
+                      transition={{ duration: prefersReducedMotion ? 0 : 0.24, ease: 'easeInOut' }}
+                      aria-hidden={!isCalendarExpanded}
+                      className="overflow-hidden"
+                    >
+                    <div className="space-y-3">
                     <div>
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Mes anterior" className="rounded-lg p-2 opacity-60 hover:opacity-100"><ChevronLeft size={16}/></button>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Mes anterior" className="rounded-lg p-2 opacity-60 transition-opacity hover:opacity-100"><ChevronLeft size={16}/></button>
                       <h4 className="text-xs font-black capitalize">{calendarMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</h4>
-                      <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Mes siguiente" disabled={calendarMonth.getFullYear() === new Date().getFullYear() && calendarMonth.getMonth() >= new Date().getMonth()} className="rounded-lg p-2 opacity-60 hover:opacity-100 disabled:opacity-20"><ChevronRight size={16}/></button>
+                      <button onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Mes siguiente" disabled={calendarMonth.getFullYear() === new Date().getFullYear() && calendarMonth.getMonth() >= new Date().getMonth()} className="rounded-lg p-2 opacity-60 transition-opacity hover:opacity-100 disabled:opacity-20"><ChevronRight size={16}/></button>
                     </div>
                     <div className="grid grid-cols-7 gap-1.5 text-center">
                       {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((weekday, index) => <span key={`${weekday}-${index}`} className="pb-1 text-[8px] font-black opacity-35">{weekday}</span>)}
@@ -3849,6 +3879,8 @@ Reglas:
                     </div>
                     <p className="mt-2 text-center text-[8px] opacity-40">Los días marcados tienen entrenamientos registrados.</p>
                   </div>
+                  </div>
+                    </motion.div>
 
                     {(weeklySummary.totalSets > 0 || weeklySummary.totalVolume > 0) && (
                     <div className="grid grid-cols-2 gap-3 border-t border-zinc-700/70 pt-4 text-center">
@@ -3861,7 +3893,33 @@ Reglas:
               </section>
             )}
 
-            <div className="grid grid-cols-1 gap-6 mt-8">
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-black uppercase tracking-wider text-amber-400">Entrenamientos</h2>
+              {!isAdminMode && (
+                <div role="group" aria-label="Forma de ver los entrenamientos" className="flex items-center rounded-xl border border-zinc-800 bg-zinc-900/80 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setWorkoutView('list')}
+                    aria-label="Ver entrenamientos en lista"
+                    aria-pressed={workoutView === 'list'}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[9px] font-bold transition-colors ${workoutView === 'list' ? 'bg-amber-500/15 text-amber-300' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    <List size={14}/> Lista
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkoutView('grid')}
+                    aria-label="Ver entrenamientos en mosaico"
+                    aria-pressed={workoutView === 'grid'}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[9px] font-bold transition-colors ${workoutView === 'grid' ? 'bg-amber-500/15 text-amber-300' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    <LayoutGrid size={14}/> Mosaico
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className={`mt-3 grid ${!isAdminMode && workoutView === 'grid' ? 'grid-cols-2 gap-3' : 'grid-cols-1 gap-4'}`}>
               {validDays.length === 0 && !isAdminMode ? (
                 <div className="text-center py-10 opacity-40 font-bold text-sm italic">Rutina en construcción...</div>
               ) : null}
@@ -3871,6 +3929,7 @@ Reglas:
                 const isDragging = draggedDayId === day.id;
                 const isDragOver = dragOverDayId === day.id && draggedDayId !== day.id;
                 const completedToday = !isAdminMode && isDayCompletedToday(day, workoutLogs);
+                const isGridView = !isAdminMode && workoutView === 'grid';
                 return (
                 <motion.button key={day.id} data-day-id={day.id}
                   initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
@@ -3886,19 +3945,19 @@ Reglas:
                   onTouchMove={isAdminEditing ? handleDayTouchMove : undefined}
                   onTouchEnd={isAdminEditing ? handleDayTouchEnd : undefined}
                   onTouchCancel={isAdminEditing ? () => { clearTimeout(touchTimerRef.current); setTouchDragState(null); setDraggedDayId(null); setDragOverDayId(null); } : undefined}
-                  className={`flex items-center justify-between p-6 rounded-[2rem] border shadow-sm text-left transition-all ${isDragging ? 'opacity-40 scale-95' : ''} ${isDragOver ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''} ${completedToday ? 'ring-2 ring-emerald-500/40' : ''}`}
+                  className={`flex ${isGridView ? 'min-h-[10rem] flex-col items-stretch justify-between gap-3 rounded-2xl p-4' : 'items-center justify-between rounded-[2rem] p-6'} border shadow-sm text-left transition-all ${isDragging ? 'opacity-40 scale-95' : ''} ${isDragOver ? 'ring-2 ring-amber-500 ring-offset-2 ring-offset-zinc-900' : ''} ${completedToday ? 'ring-2 ring-emerald-500/40' : ''}`}
                   style={palette ? { backgroundColor: palette.card, borderColor: completedToday ? '#10b98140' : isDragOver ? '#f59e0b' : `${palette.accent}20`, color: palette.text } : isAdminMode ? { backgroundColor: '#18181b', borderColor: isDragOver ? '#f59e0b' : '#27272a', color: 'white' } : {}}>
-                  <div className="flex items-center gap-4">
+                  <div className={`flex min-w-0 ${isGridView ? 'w-full items-start gap-2' : 'items-center gap-4'}`}>
                     {isAdminEditing && <div className="text-zinc-600 touch-none"><GripVertical size={18}/></div>}
-                    <div className="relative p-4 rounded-3xl" style={palette ? { backgroundColor: completedToday ? '#10b98120' : `${palette.accent}15`, color: completedToday ? '#10b981' : palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: completedToday ? '#dcfce7' : '#f9fafb', color: completedToday ? '#16a34a' : '#6b7280' }}>
-                      <DayIcon size={28}/>
+                    <div className={`relative shrink-0 ${isGridView ? 'rounded-2xl p-3' : 'rounded-3xl p-4'}`} style={palette ? { backgroundColor: completedToday ? '#10b98120' : `${palette.accent}15`, color: completedToday ? '#10b981' : palette.accent } : isAdminMode ? { backgroundColor: '#27272a', color: '#f59e0b' } : { backgroundColor: completedToday ? '#dcfce7' : '#f9fafb', color: completedToday ? '#16a34a' : '#6b7280' }}>
+                      <DayIcon size={isGridView ? 20 : 28}/>
                       {completedToday && (
                         <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30">
                           <CheckCircle2 size={12} className="text-white"/>
                         </div>
                       )}
-                    </div><div><p className="text-[9px] font-black uppercase tracking-widest" style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className="text-lg font-black tracking-tight">{String(day.title || "")}</h3>{completedToday && <p className="text-[8px] font-bold text-emerald-500 mt-0.5">✓ Hecho hoy</p>}{isAdminEditing && <p className="text-[8px] font-bold text-cyan-500/70 mt-0.5 flex items-center gap-1"><Database size={8}/> Guardado en servidor</p>}</div></div>
-                  <ChevronRight size={24} style={palette ? { color: `${palette.accent}60` } : {}}/>
+                    </div><div className="min-w-0 flex-1"><p className={`${isGridView ? 'text-[8px]' : 'text-[9px]'} font-black uppercase tracking-widest ${isGridView ? 'line-clamp-2' : ''}`} style={palette ? { color: `${palette.text}70` } : {}}>{String(day.focus || "")}</p><h3 className={`${isGridView ? 'text-sm leading-snug' : 'text-lg'} font-black tracking-tight ${isGridView ? 'line-clamp-3 break-words' : ''}`}>{String(day.title || "")}</h3>{completedToday && <p className="mt-0.5 text-[8px] font-bold text-emerald-500">✓ Hecho hoy</p>}{isAdminEditing && <p className="mt-0.5 flex items-center gap-1 text-[8px] font-bold text-cyan-500/70"><Database size={8}/> Guardado en servidor</p>}</div></div>
+                  <ChevronRight className={isGridView ? 'self-end' : ''} size={isGridView ? 18 : 24} style={palette ? { color: `${palette.accent}60` } : {}}/>
                 </motion.button>
               );})}
             </div>
@@ -4004,16 +4063,17 @@ Reglas:
                const logsRaw = workoutLogs[ex.name];
                const l = Array.isArray(logsRaw) ? logsRaw : []; 
                if(l.length < 1) return null;
+               const weightProgress = getLatestWeightProgress(l);
                const displayVal = chartMode === 'volume' ? (parseFloat(l[0]?.weight) || 0) * (parseInt(l[0]?.reps) || 10) * (parseInt(ex.s) || 3) : Math.max(...l.map(x=>parseFloat(x.weight) || 0));
                return (
                  <div key={`${d.id}-${i}`} className={`${isAdminMode ? "bg-zinc-900 border-zinc-800 text-white" : "bg-white border-gray-100 text-gray-900"} p-6 rounded-[2rem] shadow-sm border cursor-pointer active:scale-[0.98] transition-transform`} onClick={() => setExpandedStatsExercise({ name: ex.name, logs: l, sets: ex.s })}>
                     <div className="flex justify-between items-start mb-2"><div><span className="text-[8px] text-zinc-400 uppercase font-black">{String(d.title || "").split(":")[0]}</span><h4 className="text-lg font-black leading-tight">{String(ex.name || "")}</h4></div><div className="text-amber-500 font-black text-sm">{displayVal}kg</div></div>
                     <MiniProgressChart data={l} color={client.color} isAdmin={isAdminMode} mode={chartMode} exSets={ex.s} />
-                    {l.length > 1 && (
+                    {weightProgress.hasComparison && (
                       <ProgressBar 
                         label={ex.name}
-                        current={parseFloat(l[0]?.weight) || 0}
-                        previous={l.length > 1 ? parseFloat(l[Math.min(5, l.length - 1)]?.weight) || parseFloat(l[0]?.weight) : parseFloat(l[0]?.weight)}
+                        current={weightProgress.current}
+                        previous={weightProgress.previous}
                         color={palette?.accent || (isAdminMode ? "#f59e0b" : "#3b82f6")}
                       />
                     )}
