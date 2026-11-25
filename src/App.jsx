@@ -3256,6 +3256,7 @@ Reglas:
         initialData={client?.questionnaire || {}}
         required={client.questionnaireRequired === true}
         onSubmit={saveQuestionnaire}
+        onBack={() => setShowQuestionnaire(false)}
       />
       <BackButtonExitHandler
         isEnabled={!!loggedInUser}

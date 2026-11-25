@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Dumbbell, FileText, HeartPulse, Loader2, MoonStar, Sparkles, Target } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Dumbbell, FileText, HeartPulse, Loader2, MoonStar, Sparkles, Target } from 'lucide-react';
 
 const DEFAULT_FORM = {
   name: '',
@@ -140,9 +140,11 @@ const Field = ({ field, value, onChange, error }) => {
   );
 };
 
-export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {}, required = true, onSubmit = async () => {} }) => {
+export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {}, required = true, onSubmit = async () => {}, onBack = () => {} }) => {
   const latestInitialData = useRef(initialData);
   latestInitialData.current = initialData;
+  const preserveDraftOnNextOpen = useRef(false);
+  const previousClientName = useRef(clientName);
   const [form, setForm] = useState(() => mergeInitialData(latestInitialData.current, clientName));
   const [isSaving, setIsSaving] = useState(false);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
@@ -152,6 +154,10 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
 
   useEffect(() => {
     if (!isOpen) return;
+    const preserveDraft = preserveDraftOnNextOpen.current && previousClientName.current === clientName;
+    preserveDraftOnNextOpen.current = false;
+    previousClientName.current = clientName;
+    if (preserveDraft) return;
     setForm(mergeInitialData(latestInitialData.current, clientName));
     setActiveSectionIndex(0);
     setErrors({});
@@ -234,6 +240,17 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
             <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-amber-500/20 blur-3xl" />
             <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="max-w-2xl space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    preserveDraftOnNextOpen.current = true;
+                    onBack();
+                  }}
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-bold text-zinc-300 transition-colors hover:border-amber-500/30 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ArrowLeft size={15} /> Volver al perfil
+                </button>
                 <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-amber-300">
                   <Sparkles size={12} /> Cuestionario de Evaluación
                 </div>
