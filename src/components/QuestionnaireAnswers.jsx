@@ -1,11 +1,11 @@
 import { getQuestionnaireDisplaySections } from '../utils/questionnaireDisplay.js';
 
-export const QuestionnaireAnswers = ({ questionnaire = {} }) => {
+export const QuestionnaireAnswers = ({ questionnaire = {}, defaultOpen = false }) => {
   const sections = getQuestionnaireDisplaySections(questionnaire);
   const answerCount = sections.reduce((total, section) => total + section.answers.length, 0);
 
   return (
-    <details className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+    <details open={defaultOpen || undefined} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
       <summary className="cursor-pointer list-none text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">
         Ver cuestionario completo · {answerCount} respuestas
       </summary>

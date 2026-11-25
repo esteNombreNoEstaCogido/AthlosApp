@@ -8,7 +8,6 @@ import {
   validateWorkoutLogData as validateLogAJV
 } from "./security/validationSchemas.js";
 import { AthlosSplashScreen } from "./components/SplashScreen.jsx";
-import { AthlosBrandHeader } from "./components/AthlosBrandHeader.jsx";
 import { ClientHeaderCard } from "./components/ClientHeaderCard.jsx";
 import { WeeklyProgress } from "./components/WeeklyProgress.jsx";
 import { motion, useReducedMotion } from "framer-motion";
@@ -35,7 +34,7 @@ import {
   signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword
 } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "firebase/storage";
+import { getStorage, ref as storageRef, uploadString, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { 
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
   getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot,
@@ -98,6 +97,33 @@ const __DEV__ = import.meta.env.MODE === 'development';
 const log = (...args) => { if (__DEV__) console.log(...args); };
 const warn = (...args) => { if (__DEV__) console.warn(...args); };
 const err = (...args) => { console.error(...args); };
+
+const compressImageFile = (file, maxDimension, quality) => new Promise((resolve, reject) => {
+  const sourceUrl = URL.createObjectURL(file);
+  const image = new window.Image();
+  const releaseSource = () => URL.revokeObjectURL(sourceUrl);
+
+  image.onload = () => {
+    releaseSource();
+    try {
+      const ratio = Math.min(maxDimension / Math.max(image.width, image.height), 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * ratio));
+      canvas.height = Math.max(1, Math.round(image.height * ratio));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('No se pudo procesar la imagen.');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo comprimir la imagen.')), 'image/jpeg', quality);
+    } catch (imageError) {
+      reject(imageError);
+    }
+  };
+  image.onerror = () => {
+    releaseSource();
+    reject(new Error('No se pudo leer la imagen seleccionada.'));
+  };
+  image.src = sourceUrl;
+});
 
 let app, db_cloud, firebaseAuth, firebaseFunctions, firebaseStorage;
 try {
@@ -235,19 +261,13 @@ const generatePDFReport = async (client, days = []) => {
 
   const container = document.createElement('div');
   container.innerHTML = html;
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  container.style.top = '0';
-  container.style.width = '210mm';
-  document.body.appendChild(container);
+  container.style.width = '194mm';
 
   try {
     await html2pdf().set(opt).from(container).save(opt.filename);
   } catch (e) {
     console.error('Error generating PDF:', e);
     throw new Error('No se pudo generar o descargar el PDF.');
-  } finally {
-    if (container.parentNode) container.parentNode.removeChild(container);
   }
 };
 
@@ -717,6 +737,7 @@ const formatDateLog = (d = new Date()) => {
   const yy = String(d.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
 };
+const hasSubmittedQuestionnaire = profile => Boolean(profile?.questionnaireSubmittedAt || profile?.questionnaire?.submittedAt);
 const getClientFollowUp = (client) => {
   const entries = Object.values(client?.logs || {}).flatMap(logs => Array.isArray(logs) ? logs : []);
   const dates = entries.map(entry => parseDateLog(entry?.date)).filter(Boolean);
@@ -736,7 +757,7 @@ const getClientFollowUp = (client) => {
   const nextAction = pendingActions[0] || null;
   const actionOverdue = !!nextAction?.dueDate && nextAction.dueDate < new Date().toISOString().slice(0, 10);
 
-  if (client?.questionnaireRequired === true) return { key: 'questionnaire', label: 'Cuestionario pendiente', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
+  if (!hasSubmittedQuestionnaire(client)) return { key: 'questionnaire', label: 'Cuestionario pendiente', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
   if (!entries.length) return { key: 'no-training', label: 'Sin entrenamientos', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
   if (daysSinceActivity > 14) return { key: 'inactive', label: `${daysSinceActivity} días sin actividad`, daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
   return { key: 'active', label: 'Al día', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
@@ -1213,6 +1234,8 @@ export default function App() {
   const [recoveryRequestSent, setRecoveryRequestSent] = useState(false);
   const [recoveryRequestError, setRecoveryRequestError] = useState('');
   const [clientDetailOnly, setClientDetailOnly] = useState(false);
+  const [adminClientDashboardView, setAdminClientDashboardView] = useState('summary');
+  const [adminClientEditorView, setAdminClientEditorView] = useState('routine');
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [newClient, setNewClient] = useState({ name: "", username: "", password: "", sourceTemplate: "", questionnaireRequired: true });
   const [registerMode, setRegisterMode] = useState(false);
@@ -1305,6 +1328,8 @@ export default function App() {
     setCurrentClientId(id);
     setIsEditingClientRoutine(true);
     setClientDetailOnly(true);
+    setAdminClientDashboardView('summary');
+    setAdminClientEditorView('routine');
     setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
     setSelectedExerciseTemplate("");
   };
@@ -2786,21 +2811,63 @@ Reglas:
 
   // Progress photos (before/after 3 angles)
   const addProgressPhotos = useCallback(async (entry) => {
-    updateUserInCloud(currentClientId, u => ({
-      ...u,
-      lastActivityAt: new Date().toISOString(),
-      progressPhotos: [...(Array.isArray(u.progressPhotos) ? u.progressPhotos : []), entry]
-    }));
+    if (!firebaseStorage || !currentClientId || !entry?.id) {
+      throw new Error('No se pudo iniciar la subida de las fotos.');
+    }
+
+    const uploadedEntry = { ...entry };
+    const uploadedRefs = [];
+    try {
+      for (const angle of ['front', 'side', 'back']) {
+        const imageData = entry[angle];
+        if (!imageData) continue;
+        if (typeof imageData !== 'string' || !imageData.startsWith('data:image/')) {
+          throw new Error('El formato de una de las fotos no es válido.');
+        }
+
+        const photoRef = storageRef(firebaseStorage, `progress-photos/${currentClientId}/${entry.id}/${angle}.jpg`);
+        await uploadString(photoRef, imageData, 'data_url', { contentType: 'image/jpeg' });
+        uploadedRefs.push(photoRef);
+        uploadedEntry[angle] = await getDownloadURL(photoRef);
+      }
+
+      updateUserInCloud(currentClientId, user => ({
+        ...user,
+        lastActivityAt: new Date().toISOString(),
+        progressPhotos: [...(Array.isArray(user.progressPhotos) ? user.progressPhotos : []), uploadedEntry]
+      }));
+    } catch (uploadError) {
+      await Promise.all(uploadedRefs.map(photoRef => deleteObject(photoRef).catch(cleanupError => {
+        err('Could not clean up an incomplete progress photo upload:', cleanupError.code || cleanupError.message);
+      })));
+      err('Progress photo upload failed:', uploadError.code || uploadError.message);
+      throw uploadError;
+    }
   }, [currentClientId, updateUserInCloud]);
 
   const deleteProgressPhotos = useCallback(async (entryId) => {
-    updateUserInCloud(currentClientId, user => ({
-      ...user,
-      lastActivityAt: new Date().toISOString(),
-      progressPhotos: (Array.isArray(user.progressPhotos) ? user.progressPhotos : []).filter(entry => entry.id !== entryId)
-    }));
-    showSuccess('Fotos eliminadas');
-  }, [currentClientId, updateUserInCloud, showSuccess]);
+    const entry = (Array.isArray(db[currentClientId]?.progressPhotos) ? db[currentClientId].progressPhotos : [])
+      .find(photoEntry => photoEntry.id === entryId);
+    if (!entry) return;
+
+    const storedPhotoUrls = ['front', 'side', 'back']
+      .map(angle => entry[angle])
+      .filter(url => typeof url === 'string' && url.startsWith('https://firebasestorage.googleapis.com/'));
+
+    try {
+      if (storedPhotoUrls.length && !firebaseStorage) throw new Error('Firebase Storage no está disponible.');
+      await Promise.all(storedPhotoUrls.map(url => deleteObject(storageRef(firebaseStorage, url))));
+      updateUserInCloud(currentClientId, user => ({
+        ...user,
+        lastActivityAt: new Date().toISOString(),
+        progressPhotos: (Array.isArray(user.progressPhotos) ? user.progressPhotos : []).filter(photoEntry => photoEntry.id !== entryId)
+      }));
+      showSuccess('Fotos eliminadas');
+    } catch (deleteError) {
+      err('Progress photo deletion failed:', deleteError.code || deleteError.message);
+      showError('No se pudieron eliminar las fotos. Inténtalo de nuevo.');
+    }
+  }, [currentClientId, db, updateUserInCloud, showError, showSuccess]);
 
   const toggleUserCreation = async () => {
     if (!isFirebaseAdmin || !registrationConfigLoaded || !db_cloud) return;
@@ -2843,35 +2910,35 @@ Reglas:
     }
   };
 
-  // Avatar upload: compress image to base64 and save
+  // Avatar images are uploaded to Storage; only their download URL is saved in the profile.
   const handleAvatarUpload = useCallback((targetUserId) => {
+    if (!targetUserId || !firebaseStorage || !db_cloud) {
+      showError('Firebase Storage no está disponible. Inténtalo de nuevo.');
+      return;
+    }
+
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.onchange = (e) => {
-      const file = e.target.files?.[0];
+    input.onchange = async (event) => {
+      const file = event.target.files?.[0];
       if (!file) return;
-      if (file.size > 10 * 1024 * 1024) { alert('Imagen demasiado grande (máx 10MB)'); return; }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const img = new window.Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX = 256;
-          let w = img.width, h = img.height;
-          if (w > h) { h = Math.round(h * MAX / w); w = MAX; } else { w = Math.round(w * MAX / h); h = MAX; }
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          const base64 = canvas.toDataURL('image/jpeg', 0.8);
-          updateUserInCloud(targetUserId, u => ({ ...u, avatar: base64 }));
-        };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
+      if (file.size > 10 * 1024 * 1024) { showError('Imagen demasiado grande (máx. 10 MB).'); return; }
+      if (file.type && !file.type.startsWith('image/')) { showError('Selecciona un archivo de imagen.'); return; }
+
+      try {
+        const imageBlob = await compressImageFile(file, 256, 0.8);
+        const avatarRef = storageRef(firebaseStorage, `profile-avatars/${targetUserId}/avatar.jpg`);
+        await uploadBytes(avatarRef, imageBlob, { contentType: 'image/jpeg' });
+        const avatarUrl = await getDownloadURL(avatarRef);
+        updateUserInCloud(targetUserId, user => ({ ...user, avatar: avatarUrl }));
+      } catch (uploadError) {
+        err('Avatar upload failed:', uploadError.code || uploadError.message);
+        showError('No se pudo subir la imagen de perfil. Comprueba la conexión e inténtalo de nuevo.');
+      }
     };
     input.click();
-  }, [updateUserInCloud]);
+  }, [updateUserInCloud, showError]);
 
   const runCreateProfile = async () => {
     if (isCreatingProfile) return;
@@ -3305,8 +3372,8 @@ Reglas:
         }}
         onExit={() => signOutUser()}
       />
-      <div className={`max-w-md mx-auto p-6 pb-40 ${isAdminMode ? 'bg-black text-white' : ''}`}>
-        <div className="flex justify-between items-center mb-6">
+      <div className={`max-w-md mx-auto px-6 pt-3 pb-40 ${isAdminMode ? 'bg-black text-white' : ''}`}>
+        <div className="flex justify-between items-center mb-2">
            <div className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider ${isOnline ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border-red-500/20 bg-red-500/10 text-red-400'}`}>
              <span className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
              <span>{isOnline ? 'Online' : 'Offline'}</span>
@@ -3320,9 +3387,7 @@ Reglas:
         </div>
 
         {activeTab === "home" && (
-          <div className={`${isAdminMode ? 'space-y-3' : 'space-y-5'} animate-in fade-in duration-500`}>
-            
-            <AthlosBrandHeader />
+          <div className="space-y-3 animate-in fade-in duration-500">
             
             {isAdminMode ? (
               <div className="relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-zinc-900 via-zinc-900/90 to-black p-5 text-white shadow-xl">
@@ -3359,23 +3424,56 @@ Reglas:
               />
             )}
 
-            {!isFirebaseAdmin && !client.questionnaireSubmittedAt && (
+            {!isFirebaseAdmin && !hasSubmittedQuestionnaire(client) && (
               <button
                 type="button"
                 onClick={() => setShowQuestionnaire(true)}
-                className="flex w-full items-center justify-between gap-4 rounded-2xl border border-amber-500/20 bg-zinc-900/80 p-4 text-left transition-colors hover:border-amber-400/40"
+                aria-label="Rellenar cuestionario pendiente"
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left transition-colors hover:border-amber-400/60"
               >
-                <span>
-                  <span className="block text-sm font-black text-amber-300">Completar cuestionario</span>
-                  <span className="mt-1 block text-xs text-zinc-400">Aún no has enviado tus datos. Puedes hacerlo ahora.</span>
+                <span className="min-w-0">
+                  <span className="mb-1 inline-flex rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-300">Pendiente</span>
+                  <span className="block text-sm font-black text-white">Cuestionario pendiente</span>
+                  <span className="mt-1 block text-xs text-zinc-400">Rellena el formulario para que el entrenador conozca tus datos.</span>
                 </span>
-                <ChevronRight size={18} className="shrink-0 text-amber-400" />
+                <span className="flex shrink-0 items-center gap-1 text-[9px] font-black uppercase text-amber-300">Rellenar <ChevronRight size={16} /></span>
               </button>
             )}
 
             {isAdminMode && (
-              <div className="bg-zinc-900 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-6 mt-8">
-                <div className="flex justify-between items-center">
+              <div className={clientDetailOnly ? 'space-y-3' : 'bg-zinc-900 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-6 mt-8'}>
+                {clientDetailOnly && (
+                  <section className="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 shadow-xl" aria-label="Todos los clientes">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Todos los clientes</p>
+                      <span className="rounded-full bg-zinc-800 px-2 py-1 text-[8px] font-bold text-zinc-400">{adminClientEntries.length}</span>
+                    </div>
+                    <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+                      {adminClientEntries.map(({ id, profile }) => {
+                        const isSelected = editingClientId === id;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => handleClientSelect(id)}
+                            aria-current={isSelected ? 'true' : undefined}
+                            className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${isSelected ? 'border-amber-500/50 bg-amber-500/10' : 'border-zinc-800 bg-zinc-950/70 hover:border-zinc-700'}`}
+                          >
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-800 text-[10px] font-black text-amber-300">
+                              {profile.avatar ? <img src={profile.avatar} alt="" className="h-full w-full object-cover" /> : String(profile.name || id).charAt(0).toUpperCase()}
+                            </span>
+                            <span className="min-w-0">
+                              <span className={`block truncate text-[9px] font-black ${isSelected ? 'text-amber-300' : 'text-white'}`}>{String(profile.name || id)}</span>
+                              <span className="block truncate text-[8px] text-zinc-500">{id}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+                {!clientDetailOnly && (
+                  <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500"><Users size={14} className="text-amber-500" /> Clientes ({Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').length})</div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase">
                     <button onClick={fetchSyncPreview} disabled={isForceReloading || syncPreviewLoading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={(isForceReloading || syncPreviewLoading) ? 'animate-spin' : ''}/> {syncPreviewLoading ? '...' : 'Sync'}</button>
@@ -3386,7 +3484,8 @@ Reglas:
                       <button onClick={() => { setRegisterMode(false); setShowAddClientModal(true); }} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
                     )}
                   </div>
-                </div>
+                  </div>
+                )}
                 {!clientDetailOnly && (
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -3470,100 +3569,191 @@ Reglas:
                   </div>
                 )}
                 
-                {editingClientId && db[editingClientId] && (
-                  <div id="admin-client-routine-editor" className="border-t border-zinc-800 pt-12 space-y-12 animate-in slide-in-from-top-4 mt-8">
-                    {clientDetailOnly && (
-                      <div className="mb-4 space-y-4">
-                        <button onClick={() => { setClientDetailOnly(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsEditingClientRoutine(false); }} className="text-amber-500 text-[9px] font-bold">← Volver a la lista</button>
-                        {selectedClientSummary && (
-                          <div className="w-full rounded-2xl border border-amber-500/15 bg-zinc-950 p-3 sm:p-4">
-                            <div className="grid grid-cols-2 gap-2.5 text-white sm:gap-3">
-                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Sesiones finalizadas</p>
-                                <p className="mt-2 text-2xl font-black tabular-nums">{selectedClientSummary.completedSessions}</p>
-                              </div>
-                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Días con actividad</p>
-                                <p className="mt-2 text-2xl font-black tabular-nums">{selectedClientSummary.activeDays}</p>
-                              </div>
-                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Días en rutina</p>
-                                <p className="mt-2 text-2xl font-black tabular-nums">{selectedClientSummary.plannedDays}</p>
-                              </div>
-                              <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
-                                <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Opiniones nuevas</p>
-                                <p className={`mt-2 text-2xl font-black tabular-nums ${selectedClientSummary.pendingFeedbackCount > 0 ? 'text-rose-300' : 'text-white'}`}>{selectedClientSummary.pendingFeedbackCount}</p>
-                              </div>
+                {clientDetailOnly && adminClientDashboardView !== 'editor' && editingClientId && db[editingClientId] && (
+                  <section className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 shadow-xl" aria-label="Panel del cliente">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Panel del cliente</p>
+                      <button type="button" onClick={() => { setClientDetailOnly(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsEditingClientRoutine(false); }} className="rounded-lg px-2 py-1 text-[9px] font-bold text-amber-400 hover:bg-amber-500/10">← Clientes</button>
+                    </div>
+                    <div role="group" aria-label="Secciones de la ficha" className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'summary', label: 'Resumen', value: `${selectedClientSummary?.completedSessions || 0} sesiones`, Icon: Activity },
+                        { id: 'questionnaire', label: 'Cuestionario', value: hasSubmittedQuestionnaire(db[editingClientId]) ? 'Realizado' : 'Pendiente', Icon: CheckCircle2 },
+                        { id: 'routine', label: 'Rutina', value: `${selectedClientSummary?.plannedDays || 0} días`, Icon: Dumbbell }
+                      ].map(({ id, label, value, Icon }) => (
+                        <button key={id} type="button" aria-pressed={adminClientDashboardView === id} onClick={() => setAdminClientDashboardView(id)}
+                          className={`min-w-0 rounded-xl border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${adminClientDashboardView === id ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-zinc-800 bg-zinc-950/70 text-zinc-400 hover:border-zinc-700'}`}>
+                          <span className="flex items-center gap-1.5 text-[9px] font-black uppercase"><Icon size={13} className="shrink-0"/> <span className="truncate">{label}</span></span>
+                          <span className="mt-1 block truncate text-[8px] font-semibold opacity-70">{value}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {adminClientDashboardView === 'summary' && selectedClientSummary && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[
+                            { label: 'Sesiones', value: selectedClientSummary.completedSessions },
+                            { label: 'Días activos', value: selectedClientSummary.activeDays },
+                            { label: 'Días de rutina', value: selectedClientSummary.plannedDays },
+                            { label: 'Opiniones nuevas', value: selectedClientSummary.pendingFeedbackCount }
+                          ].map(item => (
+                            <div key={item.label} className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-2.5">
+                              <p className="text-[8px] font-black uppercase text-zinc-500">{item.label}</p>
+                              <p className={`mt-1 text-lg font-black tabular-nums ${item.label === 'Opiniones nuevas' && item.value > 0 ? 'text-rose-300' : 'text-white'}`}>{item.value}</p>
                             </div>
-                            <div className="mt-2.5 min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:mt-3">
-                              <p className="text-[9px] font-black uppercase leading-snug text-zinc-400">Objetivo</p>
-                              <p className="mt-2 break-words text-sm font-bold leading-snug text-white">{selectedClientSummary.objective}</p>
-                            </div>
-                            {Array.isArray(db[editingClientId].completedSessions) && db[editingClientId].completedSessions[0] && (
-                              <p className="mt-3 border-t border-zinc-800 pt-3 text-[9px] text-zinc-400">
-                                Última sesión: <span className="font-bold text-zinc-200">{db[editingClientId].completedSessions[0].dayTitle}</span> · {new Date(db[editingClientId].completedSessions[0].finishedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })} · {Math.floor((db[editingClientId].completedSessions[0].durationSeconds || 0) / 60)} min
-                              </p>
-                            )}
-                            {selectedClientSummary.injuries !== '—' && (
-                              <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3">
-                                <p className="text-[9px] font-black uppercase text-red-300">Lesiones y molestias declaradas</p>
-                                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-zinc-200">{selectedClientSummary.injuries}</p>
-                              </div>
-                            )}
+                          ))}
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3">
+                            <p className="text-[8px] font-black uppercase text-amber-300">Objetivo</p>
+                            <p className="mt-1 text-xs font-bold text-white">{selectedClientSummary.objective}</p>
                           </div>
+                          <div className="rounded-xl border border-red-500/15 bg-red-500/5 p-3">
+                            <p className="text-[8px] font-black uppercase text-red-300">Lesiones / alertas</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-zinc-200">{selectedClientSummary.injuries}</p>
+                          </div>
+                        </div>
+                        {db[editingClientId].completedSessions?.[0] && (
+                          <p className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[9px] text-zinc-400">
+                            Última sesión: <span className="font-bold text-zinc-200">{db[editingClientId].completedSessions[0].dayTitle}</span> · {new Date(db[editingClientId].completedSessions[0].finishedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
+                          </p>
                         )}
                       </div>
                     )}
-                    {/* HEADER DEL CLIENTE */}
-                    <div className={`bg-gradient-to-br ${String(db[editingClientId].color || "from-blue-600")} p-6 rounded-2xl text-white relative`}>
-                      <div className="flex justify-end gap-2 mb-5">
-                        <button
-                          type="button"
-                          disabled={isGeneratingClientPdf}
-                          onClick={async () => {
-                            const selectedClient = db[editingClientId];
-                            if (!selectedClient || isGeneratingClientPdf) return;
-                            setIsGeneratingClientPdf(true);
-                            try {
-                              await generatePDFReport(selectedClient, Array.isArray(selectedClient.workoutData?.days) ? selectedClient.workoutData.days : []);
-                              showSuccess('PDF descargado correctamente.');
-                            } catch (pdfError) {
-                              err('❌ Error generando PDF del cliente:', pdfError.message);
-                              showError('No se pudo generar el PDF. Inténtalo de nuevo.');
-                            } finally {
-                              setIsGeneratingClientPdf(false);
-                            }
-                          }}
-                          className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase disabled:cursor-wait disabled:opacity-60"
-                        >
-                          {isGeneratingClientPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14}/>}
-                          {isGeneratingClientPdf ? 'Generando...' : 'PDF'}
-                        </button>
-                        <button onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="bg-red-500/30 hover:bg-red-500/40 text-red-200 p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Trash2 size={14}/> Eliminar</button>
-                      </div>
-                      <div className="space-y-6">
-                        <div className="flex items-center gap-4 mb-2">
-                          <button onClick={() => handleAvatarUpload(editingClientId)} className="relative w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0 group active:scale-95 transition-transform">
-                            {db[editingClientId].avatar ? <img src={db[editingClientId].avatar} alt="" className="w-full h-full object-cover" /> : <User size={28} className="text-white/60" />}
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera size={16} className="text-white" /></div>
+                    {adminClientDashboardView === 'questionnaire' && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                          <div>
+                            <p className="text-[9px] font-black uppercase text-amber-300">Cuestionario</p>
+                            <p className="mt-1 text-[9px] text-zinc-400">{hasSubmittedQuestionnaire(db[editingClientId]) ? 'El cliente ya lo ha enviado' : 'Aún no ha enviado sus respuestas'}</p>
+                          </div>
+                          <button type="button" onClick={() => updateUserInCloud(editingClientId, user => ({ ...user, questionnaireRequired: user.questionnaireRequired !== true }))}
+                            aria-pressed={db[editingClientId].questionnaireRequired === true}
+                            className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-2 text-[8px] font-black uppercase text-amber-300">
+                            {db[editingClientId].questionnaireRequired === true ? 'Dejar de pedir' : 'Solicitar'}
                           </button>
-                          <p className="text-[9px] text-white/50 font-bold uppercase">Cambiar avatar</p>
                         </div>
-                        <div>
-                          <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Nombre</label>
-                          <input key={`name-${editingClientId}`} defaultValue={String(db[editingClientId].name || "")} maxLength="50" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, name: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-black text-lg outline-none" />
+                        <QuestionnaireAnswers questionnaire={db[editingClientId].questionnaire || {}} defaultOpen />
+                      </div>
+                    )}
+                    {adminClientDashboardView === 'routine' && (
+                      <div className="space-y-2">
+                        {(Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days : []).map((day, index) => (
+                          <button
+                            key={day.id ?? index}
+                            type="button"
+                            onClick={() => { setEditingDayId(day.id); setAdminClientEditorView('routine'); setAdminClientDashboardView('editor'); }}
+                            aria-label={`Ver información de ${String(day.title || `Día ${index + 1}`)}`}
+                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-left transition-colors hover:border-amber-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-[10px] font-black text-white">{String(day.title || `Día ${index + 1}`)}</p>
+                              <p className="mt-1 truncate text-[8px] text-zinc-500">{String(day.focus || 'Sin enfoque indicado')}</p>
+                            </div>
+                            <span className="flex shrink-0 items-center gap-2">
+                              <span className="rounded-lg bg-zinc-800 px-2 py-1 text-[8px] font-bold text-zinc-300">{Array.isArray(day.exercises) ? day.exercises.length : 0} ejercicios</span>
+                              <ChevronRight size={14} className="text-zinc-500"/>
+                            </span>
+                          </button>
+                        ))}
+                        {selectedClientSummary?.plannedDays === 0 && <p className="rounded-xl border border-dashed border-zinc-700 p-3 text-center text-[9px] text-zinc-500">Aún no hay días en la rutina.</p>}
+                        <button type="button" onClick={() => { setAdminClientEditorView('routine'); setAdminClientDashboardView('editor'); }} className="w-full rounded-xl bg-amber-500 px-4 py-3 text-[9px] font-black uppercase text-black hover:bg-amber-400">Editar rutina completa</button>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {editingClientId && db[editingClientId] && (!clientDetailOnly || adminClientDashboardView === 'editor') && (
+                  <div id="admin-client-routine-editor" className={`${clientDetailOnly ? 'space-y-5' : 'border-t border-zinc-800 pt-12 space-y-12 mt-8'} animate-in slide-in-from-top-4`}>
+                    {clientDetailOnly && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editingDayId !== null) {
+                            setEditingDayId(null);
+                            setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
+                            setAddingNewMusGroup(false);
+                            setSelectedMusculoGroup("");
+                            setAdminClientEditorView('routine');
+                            setAdminClientDashboardView('routine');
+                            return;
+                          }
+                          setAdminClientDashboardView('summary');
+                        }}
+                        className="rounded-lg px-2 py-1 text-[9px] font-bold text-amber-400 hover:bg-amber-500/10"
+                      >
+                        ← Volver {editingDayId !== null ? 'a la rutina' : 'al panel del cliente'}
+                      </button>
+                    )}
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-white">{String(db[editingClientId].name || editingClientId)}</p>
+                          <p className="truncate text-[9px] text-zinc-500">{String(db[editingClientId].subtitle || 'Ficha del cliente')}</p>
                         </div>
-                        <div>
-                          <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Subtítulo</label>
-                          <input key={`subtitle-${editingClientId}`} defaultValue={String(db[editingClientId].subtitle || "")} maxLength="60" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, subtitle: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-black uppercase text-white/60 block mb-2">Consejo Coach</label>
-                          <textarea key={`advice-${editingClientId}`} defaultValue={String(db[editingClientId].advice || "")} maxLength="150" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, advice: sanitizeInput(val)})), 500); }} className="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-white font-medium text-sm outline-none" />
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isGeneratingClientPdf}
+                            onClick={async () => {
+                              const selectedClient = db[editingClientId];
+                              if (!selectedClient || isGeneratingClientPdf) return;
+                              setIsGeneratingClientPdf(true);
+                              try {
+                                await generatePDFReport(selectedClient, Array.isArray(selectedClient.workoutData?.days) ? selectedClient.workoutData.days : []);
+                                showSuccess('PDF descargado correctamente.');
+                              } catch (pdfError) {
+                                err('❌ Error generando PDF del cliente:', pdfError.message);
+                                showError('No se pudo generar el PDF. Inténtalo de nuevo.');
+                              } finally {
+                                setIsGeneratingClientPdf(false);
+                              }
+                            }}
+                            className="flex items-center gap-1 rounded-lg bg-zinc-800 px-2.5 py-2 text-[8px] font-black uppercase text-zinc-200 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {isGeneratingClientPdf ? <Loader2 size={13} className="animate-spin" /> : <Download size={13}/>}
+                            PDF
+                          </button>
+                          <button type="button" onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-2 text-[8px] font-black uppercase text-red-300"><Trash2 size={13}/> Eliminar</button>
                         </div>
                       </div>
+                      <details className="mt-2 border-t border-zinc-800 pt-2">
+                        <summary className="cursor-pointer text-[8px] font-black uppercase tracking-wide text-zinc-500">Editar perfil</summary>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <button type="button" onClick={() => handleAvatarUpload(editingClientId)} className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 p-2 text-left text-[9px] font-bold text-zinc-300">
+                            {db[editingClientId].avatar ? <img src={db[editingClientId].avatar} alt="" className="h-8 w-8 rounded-lg object-cover" /> : <User size={18} className="text-zinc-500"/>}
+                            Cambiar avatar <Camera size={12} className="text-amber-400"/>
+                          </button>
+                          <label className="text-[8px] font-black uppercase text-zinc-500">Nombre
+                            <input key={`name-${editingClientId}`} defaultValue={String(db[editingClientId].name || "")} maxLength="50" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, name: sanitizeInput(val)})), 500); }} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs font-bold text-white outline-none focus:border-amber-500" />
+                          </label>
+                          <label className="text-[8px] font-black uppercase text-zinc-500">Subtítulo
+                            <input key={`subtitle-${editingClientId}`} defaultValue={String(db[editingClientId].subtitle || "")} maxLength="60" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, subtitle: sanitizeInput(val)})), 500); }} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-white outline-none focus:border-amber-500" />
+                          </label>
+                          <label className="text-[8px] font-black uppercase text-zinc-500 sm:col-span-2">Consejo Coach
+                            <textarea key={`advice-${editingClientId}`} defaultValue={String(db[editingClientId].advice || "")} maxLength="150" onBlur={e => { const val = e.target.value; clearTimeout(adminBlurTimerRef.current); adminBlurTimerRef.current = setTimeout(() => updateUserInCloud(editingClientId, u => ({...u, advice: sanitizeInput(val)})), 500); }} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-xs text-white outline-none focus:border-amber-500" />
+                          </label>
+                        </div>
+                      </details>
                     </div>
 
+                    {clientDetailOnly && (
+                      <div role="group" aria-label="Accesos rápidos del cliente" className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { id: 'routine', label: 'Rutina', count: Array.isArray(db[editingClientId].workoutData?.days) ? db[editingClientId].workoutData.days.length : 0, Icon: Dumbbell },
+                          { id: 'feedback', label: 'Opiniones', count: (Array.isArray(db[editingClientId].exerciseFeedback) ? db[editingClientId].exerciseFeedback : []).filter(item => item.status === 'new').length, Icon: MessageSquareHeart },
+                          { id: 'followup', label: 'Seguimiento', count: (Array.isArray(db[editingClientId].followUpActions) ? db[editingClientId].followUpActions : []).filter(action => action.status !== 'completed').length, Icon: CalendarDays },
+                          { id: 'history', label: 'Historial', count: (Array.isArray(db[editingClientId].routineHistory) ? db[editingClientId].routineHistory : []).length, Icon: History }
+                        ].map(({ id, label, count, Icon }) => (
+                          <button key={id} type="button" aria-pressed={adminClientEditorView === id} onClick={() => { setAdminClientEditorView(id); if (id === 'history') setShowRoutineHistory(true); }} className={`min-w-0 rounded-xl border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${adminClientEditorView === id ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-zinc-800 bg-zinc-950/80 text-zinc-400 hover:border-zinc-700'}`}>
+                            <span className="flex items-center gap-0.5 text-[7px] font-black uppercase"><Icon size={11} className="shrink-0"/><span className="truncate">{label}</span></span>
+                            <span className="mt-1 block text-[7px] font-bold opacity-70">{count} {id === 'feedback' ? 'nuevas' : id === 'followup' ? 'pendientes' : id === 'history' ? 'versiones' : 'días'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {(!clientDetailOnly || adminClientEditorView === 'feedback') && (
                     <section className="space-y-3 rounded-2xl border border-rose-500/20 bg-zinc-900/70 p-4" aria-labelledby="exercise-feedback-inbox-title">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -3572,14 +3762,18 @@ Reglas:
                         </div>
                         <span className="rounded-full bg-rose-500/10 px-2 py-1 text-[8px] font-black text-rose-300">{(Array.isArray(db[editingClientId].exerciseFeedback) ? db[editingClientId].exerciseFeedback : []).filter(item => item.status === 'new').length} nuevas</span>
                       </div>
-                      <AdminExerciseFeedbackInbox
-                        items={[...(Array.isArray(db[editingClientId].exerciseFeedback) ? db[editingClientId].exerciseFeedback : [])].sort((a, b) => Number(a.status !== 'new') - Number(b.status !== 'new') || new Date(b.createdAt) - new Date(a.createdAt))}
-                        onReview={feedbackId => updateExerciseFeedbackStatus(editingClientId, feedbackId, 'reviewed')}
-                        onResolve={feedbackId => updateExerciseFeedbackStatus(editingClientId, feedbackId, 'resolved')}
-                        onOpenExercise={(dayId, exerciseName) => openFeedbackExercise(editingClientId, dayId, exerciseName)}
-                      />
+                      {(!Array.isArray(db[editingClientId].exerciseFeedback) || db[editingClientId].exerciseFeedback.length === 0)
+                        ? <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-center text-[9px] text-zinc-500">Aún no hay opiniones de ejercicios para este cliente.</p>
+                        : <AdminExerciseFeedbackInbox
+                            items={[...db[editingClientId].exerciseFeedback].sort((a, b) => Number(a.status !== 'new') - Number(b.status !== 'new') || new Date(b.createdAt) - new Date(a.createdAt))}
+                            onReview={feedbackId => updateExerciseFeedbackStatus(editingClientId, feedbackId, 'reviewed')}
+                            onResolve={feedbackId => updateExerciseFeedbackStatus(editingClientId, feedbackId, 'resolved')}
+                            onOpenExercise={(dayId, exerciseName) => openFeedbackExercise(editingClientId, dayId, exerciseName)}
+                          />}
                     </section>
+                    )}
 
+                    {(!clientDetailOnly || adminClientEditorView === 'followup') && (
                     <section className="space-y-4 rounded-2xl border border-amber-500/20 bg-zinc-900/70 p-4" aria-labelledby="follow-up-actions-heading">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -3618,7 +3812,9 @@ Reglas:
                         {(Array.isArray(db[editingClientId].followUpActions) ? db[editingClientId].followUpActions : []).length === 0 && <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-center text-[9px] text-zinc-500">Todavía no hay acciones de seguimiento.</p>}
                       </div>
                     </section>
+                    )}
 
+                    {(!clientDetailOnly || adminClientEditorView === 'history') && (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
                       <button onClick={() => setShowRoutineHistory(value => !value)} className="flex w-full items-center justify-between text-left">
                         <span className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-300"><History size={14} className="text-amber-500"/> Historial de rutina ({(Array.isArray(db[editingClientId].routineHistory) ? db[editingClientId].routineHistory : []).length})</span>
@@ -3644,6 +3840,7 @@ Reglas:
                         </div>
                       )}
                     </div>
+                    )}
 
                     {/* SELECTOR DE DÍAS */}
                     <div className="space-y-6">
@@ -4194,7 +4391,18 @@ Reglas:
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: prefersReducedMotion ? 0 : 0.28, delay: prefersReducedMotion ? 0 : Math.min(index, 4) * 0.045, ease: 'easeOut' }}
                   whileTap={!prefersReducedMotion && !isAdminEditing ? { scale: 0.985 } : undefined}
-                  onClick={() => { if (touchDragState) return; isAdminEditing ? setEditingDayId(day.id) : navigateTo("day", day); }}
+                  onClick={() => {
+                    if (touchDragState) return;
+                    if (isAdminEditing) {
+                      setEditingDayId(day.id);
+                      if (clientDetailOnly) {
+                        setAdminClientEditorView('routine');
+                        setAdminClientDashboardView('editor');
+                      }
+                      return;
+                    }
+                    navigateTo("day", day);
+                  }}
                   draggable={isAdminEditing}
                   onDragStart={isAdminEditing ? (e) => { setDraggedDayId(day.id); e.dataTransfer.effectAllowed = 'move'; } : undefined}
                   onDragOver={isAdminEditing ? (e) => { e.preventDefault(); setDragOverDayId(day.id); } : undefined}
@@ -4775,6 +4983,7 @@ Reglas:
                 const clientData = db[clientInfoTarget];
                 const questionnaire = clientData.questionnaire || {};
                 const hasQuestionnaire = Object.keys(questionnaire).length > 0;
+                const questionnaireSubmitted = hasSubmittedQuestionnaire(clientData);
                 const objective = String(questionnaire.mainObjective || '—');
                 const injuries = String(questionnaire.injuries || '—');
                 const trainingPlan = `${String(questionnaire.trainingDays || '—')} días · ${String(questionnaire.sessionMinutes || '—')} min`;
@@ -4802,11 +5011,11 @@ Reglas:
                           <p className="mt-2 text-sm font-bold text-white break-words">{item.value}</p>
                         </div>
                       ))}
-                      <div className={`rounded-2xl border p-4 ${clientData.questionnaireSubmittedAt ? 'border-emerald-500/20 bg-emerald-500/10' : clientData.questionnaireRequired === true ? 'border-red-500/20 bg-red-500/10' : 'border-white/8 bg-white/[0.03]'}`}>
+                      <div className={`rounded-2xl border p-4 ${questionnaireSubmitted ? 'border-emerald-500/20 bg-emerald-500/10' : 'border-red-500/20 bg-red-500/10'}`}>
                         <p className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-500">Cuestionario</p>
-                        <p className={`mt-2 text-sm font-bold ${clientData.questionnaireSubmittedAt ? 'text-emerald-300' : clientData.questionnaireRequired === true ? 'text-red-300' : 'text-zinc-300'}`}>{clientData.questionnaireSubmittedAt ? 'Cuestionario realizado' : clientData.questionnaireRequired === true ? 'Pendiente' : 'Opcional'}</p>
-                        {clientData.questionnaireSubmittedAt && (
-                          <p className="mt-1 text-[10px] text-zinc-400">Última respuesta: {new Date(clientData.questionnaireSubmittedAt).toLocaleDateString('es-ES')}</p>
+                        <p className={`mt-2 text-sm font-bold ${questionnaireSubmitted ? 'text-emerald-300' : 'text-red-300'}`}>{questionnaireSubmitted ? 'Cuestionario realizado' : 'Pendiente'}</p>
+                        {questionnaireSubmitted && (
+                          <p className="mt-1 text-[10px] text-zinc-400">Última respuesta: {new Date(clientData.questionnaireSubmittedAt || questionnaire.submittedAt).toLocaleDateString('es-ES')}</p>
                         )}
                       </div>
                     </div>
@@ -4821,7 +5030,7 @@ Reglas:
                         >
                           {clientData.questionnaireRequired === true
                             ? 'Dejar de solicitar'
-                            : clientData.questionnaireSubmittedAt
+                            : questionnaireSubmitted
                               ? 'Solicitar de nuevo'
                               : 'Pedir cuestionario'}
                         </button>

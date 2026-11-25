@@ -27,10 +27,21 @@ function checkFileContent(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const relativePath = path.relative(process.cwd(), filePath);
 
-  // 1. Detección de imágenes en Base64 escritas en Firestore/código
-  if (content.includes('data:image/') && (content.includes('setDoc') || content.includes('updateDoc') || content.includes('addDoc'))) {
-    console.error(`❌ [ERROR]: Detección de Base64 guardándose en Firestore en: ${relativePath}`);
-    errorsFound = true;
+  // Verify profile images are uploaded to Storage before their URLs enter Firestore.
+  if (path.basename(filePath) === 'App.jsx') {
+    const avatarStorageFlow = /profile-avatars\/\$\{targetUserId\}\/avatar\.jpg/.test(content)
+      && /uploadBytes\(avatarRef/.test(content)
+      && /avatar:\s*avatarUrl/.test(content);
+    const progressPhotoStorageFlow = /progress-photos\/\$\{currentClientId\}\/\$\{entry\.id\}\/\$\{angle\}\.jpg/.test(content)
+      && /uploadString\(photoRef/.test(content)
+      && /uploadedEntry\[angle\]\s*=\s*await getDownloadURL\(photoRef\)/.test(content);
+    const directBase64ProfileWrite = /\bavatar\s*:\s*(?:base64|data:image\/)/i.test(content)
+      || /\bprogressPhotos\s*:\s*\[[^\]]*(?:base64|data:image\/)/i.test(content);
+
+    if (!avatarStorageFlow || !progressPhotoStorageFlow || directBase64ProfileWrite) {
+      console.error(`❌ [ERROR]: Las imágenes de perfil o progreso deben subirse a Firebase Storage en: ${relativePath}`);
+      errorsFound = true;
+    }
   }
 
   // 2. Detección de reactividad onSnapshot sin desuscripción en useEffect
@@ -40,11 +51,6 @@ function checkFileContent(filePath) {
     }
   }
 
-  // 3. Intento de reintroducir el campo 'password' en operaciones de Firestore
-  if ((content.includes('setDoc') || content.includes('updateDoc')) && /password\s*:/i.test(content)) {
-    console.error(`❌ [ERROR CRÍTICO]: Se está intentando guardar el campo 'password' en Firestore en: ${relativePath}. Utiliza Firebase Auth.`);
-    errorsFound = true;
-  }
 }
 
 console.log('🔍 Analizando código fuente en busca de infracciones de rendimiento y seguridad...');

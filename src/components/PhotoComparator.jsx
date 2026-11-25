@@ -96,6 +96,7 @@ export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, onDeletePho
   const [showUpload, setShowUpload] = useState(false);
   const [currentPhotos, setCurrentPhotos] = useState({ front: null, side: null, back: null });
   const [isLoading, setIsLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [compareMode, setCompareMode] = useState(false);
   const [dateA, setDateA] = useState(null);
   const [dateB, setDateB] = useState(null);
@@ -106,6 +107,7 @@ export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, onDeletePho
   );
 
   const handleCapture = (angleId, dataUrl) => {
+    setSaveError('');
     setCurrentPhotos(prev => ({ ...prev, [angleId]: dataUrl }));
   };
 
@@ -113,15 +115,21 @@ export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, onDeletePho
     const hasAny = currentPhotos.front || currentPhotos.side || currentPhotos.back;
     if (!hasAny) return;
     setIsLoading(true);
+    setSaveError('');
     const entry = {
       id: Date.now(),
       timestamp: new Date().toISOString(),
       ...currentPhotos,
     };
-    await onSavePhotos(entry);
-    setCurrentPhotos({ front: null, side: null, back: null });
-    setShowUpload(false);
-    setIsLoading(false);
+    try {
+      await onSavePhotos(entry);
+      setCurrentPhotos({ front: null, side: null, back: null });
+      setShowUpload(false);
+    } catch {
+      setSaveError('No se pudieron guardar las fotos. Comprueba la conexión e inténtalo de nuevo.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const accent = palette?.accent || '#D4AF37';
@@ -266,7 +274,7 @@ export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, onDeletePho
         <div className="p-5 rounded-[2rem] border space-y-4 animate-in slide-in-from-bottom" style={{ backgroundColor: palette?.card || '#18181b', borderColor: `${accent}30` }}>
           <div className="flex justify-between items-center">
             <h4 className="text-xs font-black uppercase" style={{ color: accent }}>Nuevas Fotos</h4>
-            <button onClick={() => { setShowUpload(false); setCurrentPhotos({ front: null, side: null, back: null }); }}>
+            <button onClick={() => { setShowUpload(false); setCurrentPhotos({ front: null, side: null, back: null }); setSaveError(''); }}>
               <X size={18} style={{ color: `${palette?.text || '#fff'}40` }}/>
             </button>
           </div>
@@ -294,6 +302,7 @@ export const PhotoComparator = ({ progressPhotos = [], onSavePhotos, onDeletePho
             {isLoading ? <Loader2 size={16} className="animate-spin"/> : <Plus size={16}/>}
             Guardar Fotos
           </button>
+          {saveError && <p role="alert" className="text-center text-[10px] font-bold text-red-400">{saveError}</p>}
         </div>
       )}
     </div>

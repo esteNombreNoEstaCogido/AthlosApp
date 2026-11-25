@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const read = relative => fs.readFileSync(path.join(scriptDirectory, '..', relative), 'utf8');
 const rules = read('firestore.rules');
+const storageRules = read('storage.rules');
 const app = read('src/App.jsx');
 const functions = read('functions/index.js');
 const schema = read('src/security/validationSchemas.js');
@@ -17,6 +18,9 @@ const checks = [
   ['Client updates cannot change authUid', /request\.resource\.data\.authUid\s*==\s*resource\.data\.authUid/.test(rules)],
   ['Unknown Firestore paths are denied', /allow read, write:\s*if false/.test(rules)],
   ['Unauthenticated collection reads and deletes are absent', !/allow read:\s*if true|allow delete:\s*if true/.test(rules)],
+  ['Avatar Storage is limited to the owner/admin and validated JPEGs', /match \/profile-avatars\/\{username\}\/\{fileName\} \{\s*allow read: if canAccessProfile\(username\);\s*allow create, update: if canAccessProfile\(username\)\s*&& request\.resource\.size <= 1 \* 1024 \* 1024\s*&& request\.resource\.contentType == 'image\/jpeg';\s*allow delete: if canAccessProfile\(username\);/s.test(storageRules)],
+  ['Progress-photo Storage is limited to the owner/admin and validated JPEGs', /match \/progress-photos\/\{username\}\/\{entryId\}\/\{fileName\} \{\s*allow read: if canAccessProfile\(username\);\s*allow create, update: if canAccessProfile\(username\)\s*&& request\.resource\.size <= 5 \* 1024 \* 1024\s*&& request\.resource\.contentType == 'image\/jpeg';\s*allow delete: if canAccessProfile\(username\);/s.test(storageRules)],
+  ['Clients can only access their own Storage images', /function ownsProfile\(username\)\s*\{\s*return signedIn\(\) && request\.auth\.token\.email == username \+ '@athlos\.app';/s.test(storageRules) && /function canAccessProfile\(username\)\s*\{\s*return isAdmin\(\) \|\| ownsProfile\(username\);/s.test(storageRules)],
   ['Client code signs in through Firebase Auth', /signInWithEmailAndPassword\(firebaseAuth/.test(app)],
   ['Client code uses no browser-generated JWT secret', !/VITE_JWT_SECRET|generateToken\(|verifyToken\(/.test(app)],
   ['Privileged callable functions verify the admin claim', /request\.auth\.token\.admin !== true/.test(functions)],

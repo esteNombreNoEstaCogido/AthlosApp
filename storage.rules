@@ -10,6 +10,30 @@ service firebase.storage {
       return signedIn() && request.auth.token.admin == true;
     }
 
+    function ownsProfile(username) {
+      return signedIn() && request.auth.token.email == username + '@athlos.app';
+    }
+
+    function canAccessProfile(username) {
+      return isAdmin() || ownsProfile(username);
+    }
+
+    match /profile-avatars/{username}/{fileName} {
+      allow read: if canAccessProfile(username);
+      allow create, update: if canAccessProfile(username)
+        && request.resource.size <= 1 * 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
+      allow delete: if canAccessProfile(username);
+    }
+
+    match /progress-photos/{username}/{entryId}/{fileName} {
+      allow read: if canAccessProfile(username);
+      allow create, update: if canAccessProfile(username)
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
+      allow delete: if canAccessProfile(username);
+    }
+
     match /exercise-images/{imageName} {
       allow read: if signedIn();
       allow create, update: if isAdmin()
