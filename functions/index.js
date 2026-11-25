@@ -9,6 +9,7 @@ const auth = getAuth();
 const firestore = getFirestore();
 const CLIENTS = 'athlos_clients';
 const ADMIN_FOLLOWUPS = 'athlos_admin_followups';
+const PASSWORD_RECOVERY = 'athlos_password_recovery';
 const EMAIL_DOMAIN = '@athlos.app';
 const REGION = 'us-central1';
 const USERNAME_PATTERN = /^[a-z0-9_-]{3,50}$/;
@@ -16,6 +17,13 @@ const USERNAME_PATTERN = /^[a-z0-9_-]{3,50}$/;
 const requireAdmin = (request) => {
   if (!request.auth || request.auth.token.admin !== true) {
     throw new HttpsError('permission-denied', 'Se requiere rol de administrador.');
+  }
+};
+
+const requireRegistrationEnabled = async () => {
+  const settings = await firestore.collection('athlos_public').doc('registration').get();
+  if (settings.exists && settings.data().registrationEnabled === false) {
+    throw new HttpsError('failed-precondition', 'El registro de nuevas cuentas está cerrado por el entrenador.');
   }
 };
 
@@ -76,7 +84,7 @@ const createClientAccount = async ({ username, name, password, profile }, adminC
       emailVerified: true
     });
     const clientProfile = adminCreated ? profile : {
-      color: 'from-blue-600 to-indigo-500',
+      color: 'from-amber-600 to-yellow-500',
       subtitle: 'Nuevo usuario',
       advice: 'A darlo todo.',
       logs: {},
@@ -104,15 +112,56 @@ const createClientAccount = async ({ username, name, password, profile }, adminC
 const requestQuestionnaire = (profile) => profile?.questionnaireRequired === true;
 
 exports.registerClient = onCall({ region: REGION }, async (request) => {
-  const account = await createClientAccount(request.data || {});
-  const customToken = await auth.createCustomToken(account.uid);
-  return { uid: account.uid, customToken };
+  await requireRegistrationEnabled();
+  const username = typeof request.data?.username === 'string' ? request.data.username.trim().toLowerCase() : '';
+  const account = await createClientAccount({ ...(request.data || {}), username });
+  try {
+    const customToken = await auth.createCustomToken(account.uid);
+    return { uid: account.uid, customToken };
+  } catch (error) {
+    await firestore.collection(CLIENTS).doc(username).delete().catch(() => {});
+    await auth.deleteUser(account.uid).catch(() => {});
+    console.error('Could not create registration token:', error);
+    throw new HttpsError('internal', 'No se pudo completar el inicio de sesión. Inténtalo otra vez.');
+  }
 });
 
 exports.adminCreateClient = onCall({ region: REGION }, async (request) => {
   requireAdmin(request);
+  await requireRegistrationEnabled();
   const account = await createClientAccount(request.data || {}, true);
   return { uid: account.uid };
+});
+
+exports.requestPasswordRecovery = onCall({ region: REGION, maxInstances: 5 }, async (request) => {
+  const username = typeof request.data?.username === 'string'
+    ? request.data.username.trim().toLowerCase()
+    : '';
+  const acceptedResponse = { accepted: true };
+  if (!USERNAME_PATTERN.test(username) || ['entrenador', 'coach', '_deleted_users'].includes(username)) {
+    return acceptedResponse;
+  }
+
+  const profile = await firestore.collection(CLIENTS).doc(username).get();
+  if (!profile.exists || !profile.data().authUid) return acceptedResponse;
+
+  const requestRef = firestore.collection(PASSWORD_RECOVERY).doc(username);
+  const existing = await requestRef.get();
+  const now = new Date();
+  const previous = existing.data() || {};
+  const lastRequestAt = previous.requestedAt ? new Date(previous.requestedAt).getTime() : 0;
+  if (lastRequestAt && now.getTime() - lastRequestAt < 5 * 60 * 1000) {
+    return acceptedResponse;
+  }
+
+  await requestRef.set({
+    username,
+    status: 'pending',
+    createdAt: previous.status === 'pending' ? previous.createdAt : now.toISOString(),
+    requestedAt: now.toISOString(),
+    requestCount: (Number(previous.requestCount) || 0) + 1
+  }, { merge: true });
+  return acceptedResponse;
 });
 
 exports.adminResetClientPassword = onCall({ region: REGION }, async (request) => {
@@ -132,6 +181,11 @@ exports.adminResetClientPassword = onCall({ region: REGION }, async (request) =>
     throw new HttpsError('failed-precondition', 'La contraseña de una cuenta administradora no se puede cambiar desde el panel de clientes.');
   }
   await auth.updateUser(user.uid, { password });
+  await firestore.collection(PASSWORD_RECOVERY).doc(username).set({
+    username,
+    status: 'resolved',
+    resolvedAt: new Date().toISOString()
+  }, { merge: true });
   return { success: true };
 });
 
@@ -150,6 +204,7 @@ exports.adminDeleteClient = onCall({ region: REGION }, async (request) => {
     if (error.code !== 'auth/user-not-found') throw error;
   });
   await firestore.collection(ADMIN_FOLLOWUPS).doc(username).delete();
+  await firestore.collection(PASSWORD_RECOVERY).doc(username).delete();
   await profileRef.delete();
   return { success: true };
 });
@@ -166,6 +221,7 @@ exports.deleteOwnClientAccount = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('not-found', 'No se encontró el perfil asociado.');
   }
   await firestore.collection(ADMIN_FOLLOWUPS).doc(username).delete();
+  await firestore.collection(PASSWORD_RECOVERY).doc(username).delete();
   await profileRef.delete();
   await auth.deleteUser(request.auth.uid);
   return { success: true };

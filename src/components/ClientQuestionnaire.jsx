@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Dumbbell, FileText, HeartPulse, Loader2, MoonStar, Sparkles, Target } from 'lucide-react';
 
 const DEFAULT_FORM = {
@@ -141,19 +141,23 @@ const Field = ({ field, value, onChange, error }) => {
 };
 
 export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {}, required = true, onSubmit = async () => {} }) => {
-  const [form, setForm] = useState(() => mergeInitialData(initialData, clientName));
+  const latestInitialData = useRef(initialData);
+  latestInitialData.current = initialData;
+  const [form, setForm] = useState(() => mergeInitialData(latestInitialData.current, clientName));
   const [isSaving, setIsSaving] = useState(false);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
   const [privacyConsent, setPrivacyConsent] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
-    setForm(mergeInitialData(initialData, clientName));
+    setForm(mergeInitialData(latestInitialData.current, clientName));
     setActiveSectionIndex(0);
     setErrors({});
+    setSubmitError('');
     setPrivacyConsent(false);
-  }, [isOpen, initialData, clientName]);
+  }, [isOpen, clientName]);
 
   const completionCount = useMemo(() => Object.entries(form).filter(([key, value]) => key !== 'additionalNotes' && String(value || '').trim()).length, [form]);
 
@@ -161,6 +165,7 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
     const nextValue = e.target.value;
     setForm(prev => ({ ...prev, [field]: nextValue }));
     setErrors(prev => ({ ...prev, [field]: '' }));
+    setSubmitError('');
   };
 
   const validateSection = (sectionIndex, validateRequired = false) => {
@@ -209,8 +214,11 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
       return;
     }
     setIsSaving(true);
+    setSubmitError('');
     try {
       await onSubmit({ ...form, privacyConsentAt: new Date().toISOString() });
+    } catch {
+      setSubmitError('No se pudo guardar el cuestionario. Tus respuestas siguen en pantalla; inténtalo de nuevo.');
     } finally {
       setIsSaving(false);
     }
@@ -255,6 +263,7 @@ export const ClientQuestionnaire = ({ isOpen, clientName = '', initialData = {},
           </div>
 
           <div className="space-y-8 px-4 py-5 sm:px-6 sm:py-6">
+            {submitError && <p role="alert" aria-live="assertive" className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300">{submitError}</p>}
             <nav aria-label="Secciones del cuestionario" className="flex gap-2 overflow-x-auto pb-1">
               {QUESTION_SECTIONS.map((section, index) => {
                 const Icon = section.icon;

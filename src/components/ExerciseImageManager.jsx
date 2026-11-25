@@ -79,7 +79,7 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
         reader.readAsDataURL(file);
       });
       const compressed = await compressImage(dataUrl);
-      onSelectImage(compressed);
+      await onSelectImage(compressed);
       onClose();
     } catch {
       setError('Error al procesar la imagen');
@@ -111,7 +111,7 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
       });
       if (photo.dataUrl) {
         const compressed = await compressImage(photo.dataUrl);
-        onSelectImage(compressed);
+        await onSelectImage(compressed);
         onClose();
       }
     } catch (err) {
@@ -163,16 +163,32 @@ export const ExerciseImageManager = ({ isOpen, onClose, onSelectImage, exerciseN
     }
   };
 
-  const confirmUrl = () => {
+  const confirmUrl = async () => {
     if (urlPreview) {
-      onSelectImage(urlPreview);
-      onClose();
+      setIsLoading(true);
+      setError('');
+      try {
+        await onSelectImage(urlPreview);
+        onClose();
+      } catch {
+        setError('No se pudo guardar la imagen');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleLocalSelect = (url) => {
-    onSelectImage(url);
-    onClose();
+  const handleLocalSelect = async (url) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      await onSelectImage(url);
+      onClose();
+    } catch {
+      setError('No se pudo guardar la imagen');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const sources = [

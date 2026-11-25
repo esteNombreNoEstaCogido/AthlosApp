@@ -13,6 +13,7 @@ import { ClientHeaderCard } from "./components/ClientHeaderCard.jsx";
 import { WeeklyProgress } from "./components/WeeklyProgress.jsx";
 import { motion, useReducedMotion } from "framer-motion";
 import { ClientQuestionnaire } from "./components/ClientQuestionnaire.jsx";
+import { QuestionnaireAnswers } from "./components/QuestionnaireAnswers.jsx";
 import { ColorPalettePicker } from "./components/ColorPalettePicker.jsx";
 import { BackButtonExitHandler } from "./components/BackButtonExitHandler.jsx";
 import { Toast, useToast } from "./components/Toast.jsx";
@@ -34,6 +35,7 @@ import {
   signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword
 } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "firebase/storage";
 import { 
   initializeFirestore, persistentLocalCache, persistentSingleTabManager,
   getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot,
@@ -91,16 +93,18 @@ const firebaseConfig = {
 const APP_VERSION = "2.5.0";
 const COLLECTION_NAME = "athlos_clients";
 const ADMIN_FOLLOWUPS_COLLECTION = "athlos_admin_followups";
+const PASSWORD_RECOVERY_COLLECTION = "athlos_password_recovery";
 const __DEV__ = import.meta.env.MODE === 'development';
 const log = (...args) => { if (__DEV__) console.log(...args); };
 const warn = (...args) => { if (__DEV__) console.warn(...args); };
 const err = (...args) => { console.error(...args); };
 
-let app, db_cloud, firebaseAuth, firebaseFunctions;
+let app, db_cloud, firebaseAuth, firebaseFunctions, firebaseStorage;
 try {
   app = initializeApp(firebaseConfig);
   firebaseAuth = getAuth(app);
   firebaseFunctions = getFunctions(app);
+  firebaseStorage = getStorage(app);
   // Usar persistentSingleTabManager (compatible con Android WebView)
   // persistentMultipleTabManager usa BroadcastChannel que no existe en WebViews
   try {
@@ -737,13 +741,14 @@ const getClientFollowUp = (client) => {
     .filter(action => action.status !== 'completed')
     .sort((a, b) => String(a.dueDate || '9999-12-31').localeCompare(String(b.dueDate || '9999-12-31')));
   const pendingFeedbackCount = (Array.isArray(client?.exerciseFeedback) ? client.exerciseFeedback : []).filter(item => item.status === 'new').length;
+  const passwordRecoveryPending = client?.passwordRecoveryRequest?.status === 'pending';
   const nextAction = pendingActions[0] || null;
   const actionOverdue = !!nextAction?.dueDate && nextAction.dueDate < new Date().toISOString().slice(0, 10);
 
-  if (client?.questionnaireRequired === true) return { key: 'questionnaire', label: 'Cuestionario pendiente', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
-  if (!entries.length) return { key: 'no-training', label: 'Sin entrenamientos', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
-  if (daysSinceActivity > 14) return { key: 'inactive', label: `${daysSinceActivity} días sin actividad`, daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
-  return { key: 'active', label: 'Al día', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount };
+  if (client?.questionnaireRequired === true) return { key: 'questionnaire', label: 'Cuestionario pendiente', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
+  if (!entries.length) return { key: 'no-training', label: 'Sin entrenamientos', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
+  if (daysSinceActivity > 14) return { key: 'inactive', label: `${daysSinceActivity} días sin actividad`, daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
+  return { key: 'active', label: 'Al día', daysSinceActivity, lastActivity, nextAction, actionOverdue, pendingFeedbackCount, passwordRecoveryPending };
 };
 const isSameDayStr = (logDate, refDate) => {
   if (!logDate) return false;
@@ -967,7 +972,7 @@ const ExpandedChart = ({ logs, exName, exSets, mode, color, isAdmin, onClose }) 
   );
 };
 
-const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onUpdateLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, dayTitle, accentColor, onAddExerciseNote, exerciseNotes, exerciseFeedback, onAddExerciseFeedback, canSubmitFeedback, palette }) => {
+const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onUpdateLog, onDeleteLog, onStartTimer, isAdmin, onUpdateImage, onOpenImageManager, dayId, dayTitle, accentColor, onAddExerciseNote, exerciseNotes, exerciseFeedback, onAddExerciseFeedback, canSubmitFeedback, palette, customExerciseImages }) => {
   const [localW, setLocalW] = useState("");
   const [localR, setLocalR] = useState("");
   const [localRir, setLocalRir] = useState('');
@@ -994,6 +999,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onUpdateLog, onDeleteLog
   const dimTextHex = p ? `${p.text}60` : undefined;
 
   const safeName = String(ex?.name || "");
+  const exerciseImage = customExerciseImages?.[safeName] || ex?.img || FALLBACK_IMG;
   const safeMus = String(ex?.mus || "Fuerza");
   const safeS = String(ex?.s || "-");
   const safeR = String(ex?.r || "-");
@@ -1029,7 +1035,7 @@ const ExerciseCard = memo(({ ex, workoutLogs, onAddLog, onUpdateLog, onDeleteLog
   return (
     <div className={`${isAdmin ? "bg-zinc-900 border-zinc-800" : p ? "" : "bg-white border-gray-100"} rounded-[2.5rem] border shadow-sm overflow-hidden mb-6`} style={p ? { backgroundColor: cardBg, borderColor: cardBorder } : undefined}>
       <div className="relative h-52 bg-zinc-800 group">
-        <img src={ex?.img || FALLBACK_IMG} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
+        <img src={exerciseImage} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" onError={imgError} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent" />
         {isAdmin && <button onClick={() => onOpenImageManager ? onOpenImageManager(dayId, safeName) : fileRef.current.click()} className="absolute top-4 left-4 bg-black/60 p-2 rounded-xl text-white flex items-center gap-1"><Camera size={18} /><span className="text-[8px] font-bold">Modificar</span><input type="file" ref={fileRef} className="hidden" onChange={e => {
              const file = e.target.files[0];
@@ -1207,13 +1213,20 @@ export default function App() {
   const [selectedMusculoGroup, setSelectedMusculoGroup] = useState("");
   const [newEx, setNewEx] = useState({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" });
   const [newDay, setNewDay] = useState({ title: "", focus: "", warmupType: "warmupLower", icon: "dumbbell" });
-  const [allowUserCreation, setAllowUserCreation] = useState(true);
+  const [allowUserCreation, setAllowUserCreation] = useState(false);
+  const [registrationConfigLoaded, setRegistrationConfigLoaded] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryUsername, setRecoveryUsername] = useState('');
+  const [isRequestingRecovery, setIsRequestingRecovery] = useState(false);
+  const [recoveryRequestSent, setRecoveryRequestSent] = useState(false);
+  const [recoveryRequestError, setRecoveryRequestError] = useState('');
   const [clientDetailOnly, setClientDetailOnly] = useState(false);
   const [showAddClientModal, setShowAddClientModal] = useState(false);
   const [newClient, setNewClient] = useState({ name: "", username: "", password: "", sourceTemplate: "", questionnaireRequired: true });
   const [registerMode, setRegisterMode] = useState(false);
   const [registerWantQuestionnaireNow, setRegisterWantQuestionnaireNow] = useState(true);
   const [registerStep, setRegisterStep] = useState("form");
+  const [registerError, setRegisterError] = useState("");
   const [isEditingClientRoutine, setIsEditingClientRoutine] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -1338,6 +1351,21 @@ export default function App() {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
+  }, []);
+
+  useEffect(() => {
+    if (!db_cloud) {
+      setRegistrationConfigLoaded(true);
+      return undefined;
+    }
+    return onSnapshot(doc(db_cloud, 'athlos_public', 'registration'), snap => {
+      setAllowUserCreation(snap.exists() ? snap.data().registrationEnabled !== false : true);
+      setRegistrationConfigLoaded(true);
+    }, configError => {
+      warn('Could not read registration availability:', configError.message);
+      setAllowUserCreation(false);
+      setRegistrationConfigLoaded(true);
+    });
   }, []);
 
   // 🔄 Forzar reconexión de Firestore cuando la app vuelve a primer plano (iOS Safari)
@@ -1610,7 +1638,9 @@ export default function App() {
   }, [isFirebaseAdmin, loggedInUser, updateUserInCloud, showSuccess]);
 
   const saveQuestionnaire = useCallback(async (questionnaireData) => {
-    if (!loggedInUser) return;
+    if (!loggedInUser || !db_cloud) {
+      throw new Error('No se pudo guardar el cuestionario. Comprueba la sesión y la conexión.');
+    }
 
     const now = new Date().toISOString();
     const normalizeNumber = (value) => {
@@ -1654,20 +1684,34 @@ export default function App() {
       updatedAt: now,
     };
 
-    updateUserInCloud(loggedInUser, u => ({
-      ...u,
+    const questionnaireUpdate = {
       questionnaire: payload,
       lastActivityAt: now,
       questionnaireRequired: false,
       questionnaireSubmittedAt: now,
       questionnaireUpdatedAt: now,
       questionnaireVersion: 1,
-    }));
+    };
 
-    setShowQuestionnaire(false);
-    setShowOnboarding(false);
-    showSuccess('Cuestionario guardado correctamente');
-  }, [loggedInUser, updateUserInCloud, showSuccess]);
+    setIsSyncing(true);
+    pendingWritesRef.current[loggedInUser] = Date.now();
+    try {
+      await setDoc(doc(db_cloud, COLLECTION_NAME, loggedInUser), questionnaireUpdate, { merge: true });
+      setDb(prev => ({
+        ...prev,
+        [loggedInUser]: { ...prev[loggedInUser], ...questionnaireUpdate }
+      }));
+      setShowQuestionnaire(false);
+      setShowOnboarding(false);
+      showSuccess('Cuestionario guardado correctamente');
+    } catch (saveError) {
+      err('❌ Error guardando cuestionario:', saveError.message);
+      throw new Error('No se pudo guardar el cuestionario. Comprueba la conexión e inténtalo de nuevo.');
+    } finally {
+      delete pendingWritesRef.current[loggedInUser];
+      setIsSyncing(false);
+    }
+  }, [loggedInUser, showSuccess]);
 
   const updateCustomExercise = useCallback((idx, updatedData) => {
     setCustomExercises(prev => {
@@ -1707,12 +1751,16 @@ export default function App() {
     if (isFirebaseAdmin) {
       let clientSnapshot = null;
       let followUpSnapshot = null;
+      let recoverySnapshot = null;
       const publishAdminData = () => {
-        if (!clientSnapshot || !followUpSnapshot) return;
+        if (!clientSnapshot || !followUpSnapshot || !recoverySnapshot) return;
         const cloud = {};
         clientSnapshot.forEach(item => { if (item.id !== '_deleted_users') cloud[item.id] = item.data(); });
         followUpSnapshot.forEach(item => {
           if (cloud[item.id]) cloud[item.id].followUpActions = Array.isArray(item.data().actions) ? item.data().actions : [];
+        });
+        recoverySnapshot.forEach(item => {
+          if (cloud[item.id]) cloud[item.id].passwordRecoveryRequest = item.data();
         });
         setDb(cloud);
         setDataLoaded(true);
@@ -1731,7 +1779,17 @@ export default function App() {
         followUpSnapshot = snap;
         publishAdminData();
       }, handleAdminSnapshotError);
-      return () => { unsubClients(); unsubFollowUps(); };
+      const unsubRecoveryRequests = onSnapshot(collection(db_cloud, PASSWORD_RECOVERY_COLLECTION), snap => {
+        recoverySnapshot = snap;
+        publishAdminData();
+      }, handleAdminSnapshotError);
+      const unsubPublicConfig = onSnapshot(doc(db_cloud, 'athlos_public', 'config'), snap => {
+        setCustomExerciseImages(snap.data()?.customExerciseImages || {});
+      }, (snapshotError) => {
+        warn('Could not load shared exercise images:', snapshotError.message);
+        showErrorRef.current('No se pudieron cargar las imágenes compartidas de ejercicios.');
+      });
+      return () => { unsubClients(); unsubFollowUps(); unsubRecoveryRequests(); unsubPublicConfig(); };
     }
 
     const ownProfileRef = doc(db_cloud, COLLECTION_NAME, loggedInUser);
@@ -1753,9 +1811,14 @@ export default function App() {
       showErrorRef.current('No se pudieron cargar tus datos de forma segura.');
     });
     const unsubPublicConfig = onSnapshot(publicConfigRef, (snap) => {
-      const phrase = snap.data()?.currentMotivationalPhrase;
+      const config = snap.data() || {};
+      const phrase = config.currentMotivationalPhrase;
       if (phrase) setDailyMotivationalPhrase(phrase);
-    }, () => {});
+      setCustomExerciseImages(config.customExerciseImages || {});
+    }, (snapshotError) => {
+      warn('Could not load shared exercise images:', snapshotError.message);
+      showErrorRef.current('No se pudieron cargar las imágenes compartidas de ejercicios.');
+    });
     return () => { unsubUser(); unsubPublicConfig(); };
   }, [isFirebaseAdmin, loggedInUser]);
 
@@ -1824,17 +1887,6 @@ export default function App() {
             }
           } else if (db[loggedInUser]?.customExercises) {
             setCustomExercises(db[loggedInUser].customExercises);
-          }
-          // Cargar imágenes personalizadas de ejercicios predefinidos
-          const savedImgOverrides = localStorage.getItem('athlos_custom_exercise_images');
-          if (savedImgOverrides) {
-            try {
-              setCustomExerciseImages(JSON.parse(savedImgOverrides));
-            } catch (e) {
-              warn('Failed to parse custom exercise images:', e.message);
-            }
-          } else if (db[loggedInUser]?.customExerciseImages) {
-            setCustomExerciseImages(db[loggedInUser].customExerciseImages);
           }
         }
 
@@ -2637,28 +2689,38 @@ Reglas:
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const updateImageHook = useCallback((dayId, exName, newImgBase64) => {
-    const targetClientId = editingClientId || currentClientId;
-    updateUserInCloud(targetClientId, (u) => {
-      const days = [...(Array.isArray(u.workoutData?.days) ? u.workoutData.days : [])];
-      const dIdx = days.findIndex(d => d.id === dayId);
-      if (dIdx !== -1) {
-          const exes = [...(Array.isArray(days[dIdx].exercises) ? days[dIdx].exercises : [])];
-          const eIdx = exes.findIndex(e => e.name === exName);
-          if (eIdx !== -1) { exes[eIdx] = { ...exes[eIdx], img: newImgBase64 }; days[dIdx] = { ...days[dIdx], exercises: exes }; }
-      }
-      return { ...u, workoutData: { ...u.workoutData, days } };
-    });
-    // Persistir imagen custom para TODOS los ejercicios (predefinidos y personalizados)
-    if (isFirebaseAdmin) {
-      setCustomExerciseImages(prev => {
-        const updated = { ...prev, [exName]: newImgBase64 };
-        localStorage.setItem('athlos_custom_exercise_images', JSON.stringify(updated));
-        updateUserInCloud(loggedInUser, u => ({ ...u, customExerciseImages: updated }));
-        return updated;
-      });
+  const updateImageHook = useCallback(async (_dayId, exName, imageData) => {
+    if (!isFirebaseAdmin || !db_cloud || !firebaseStorage) {
+      throw new Error('Solo el administrador puede actualizar imágenes compartidas.');
     }
-  }, [editingClientId, currentClientId, updateUserInCloud, isFirebaseAdmin, loggedInUser]);
+
+    setIsSyncing(true);
+    try {
+      let imageUrl = imageData;
+      if (imageData.startsWith('data:image/')) {
+        const fileName = exName.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'exercise';
+        const imageRef = storageRef(firebaseStorage, `exercise-images/${fileName}.jpg`);
+        await uploadString(imageRef, imageData, 'data_url', { contentType: 'image/jpeg' });
+        const downloadUrl = await getDownloadURL(imageRef);
+        imageUrl = `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+      }
+
+      const updatedImages = { ...customExerciseImages, [exName]: imageUrl };
+      await setDoc(doc(db_cloud, 'athlos_public', 'config'), { customExerciseImages: updatedImages }, { merge: true });
+      setCustomExerciseImages(updatedImages);
+      showSuccess(`Imagen de ${exName} actualizada para todos los clientes.`);
+      return imageUrl;
+    } catch (saveError) {
+      err('❌ Error guardando imagen compartida:', saveError.code || saveError.message);
+      showError(saveError.code?.startsWith('storage/')
+        ? 'No se pudo subir la imagen. Comprueba que Firebase Storage esté habilitado y los permisos desplegados.'
+        : 'No se pudo guardar la referencia de la imagen en Firestore. Inténtalo de nuevo.');
+      throw saveError;
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isFirebaseAdmin, customExerciseImages, showError, showSuccess]);
 
   // Body metrics stats (weight, body fat, bone mass)
   const addUserStats = useCallback(async (entry) => {
@@ -2705,6 +2767,47 @@ Reglas:
     showSuccess('Fotos eliminadas');
   }, [currentClientId, updateUserInCloud, showSuccess]);
 
+  const toggleUserCreation = async () => {
+    if (!isFirebaseAdmin || !registrationConfigLoaded || !db_cloud) return;
+    const nextEnabled = !allowUserCreation;
+    setIsSyncing(true);
+    try {
+      await setDoc(doc(db_cloud, 'athlos_public', 'registration'), {
+        registrationEnabled: nextEnabled,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      showSuccess(nextEnabled ? 'Registro de clientes activado' : 'Registro de clientes desactivado');
+    } catch (configError) {
+      warn('Could not update registration availability:', configError.message);
+      showError('No se pudo cambiar el registro. Comprueba permisos y conexión.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const submitPasswordRecoveryRequest = async () => {
+    const username = sanitizeInput(recoveryUsername, 50).trim().toLowerCase();
+    if (!/^[a-z0-9_-]{3,50}$/.test(username)) {
+      setRecoveryRequestError('Escribe el nombre de usuario de tu cuenta.');
+      return;
+    }
+    if (!firebaseFunctions) {
+      setRecoveryRequestError('No se pudo enviar la solicitud ahora. Contacta con tu entrenador.');
+      return;
+    }
+    setIsRequestingRecovery(true);
+    setRecoveryRequestError('');
+    try {
+      await httpsCallable(firebaseFunctions, 'requestPasswordRecovery')({ username });
+      setRecoveryRequestSent(true);
+    } catch (recoveryError) {
+      warn('Password recovery request failed:', recoveryError.code || recoveryError.message);
+      setRecoveryRequestError('No se pudo enviar la solicitud ahora. Contacta con tu entrenador.');
+    } finally {
+      setIsRequestingRecovery(false);
+    }
+  };
+
   // Avatar upload: compress image to base64 and save
   const handleAvatarUpload = useCallback((targetUserId) => {
     const input = document.createElement('input');
@@ -2737,6 +2840,8 @@ Reglas:
 
   const runCreateProfile = async () => {
     if (isCreatingProfile) return;
+    const isSelfRegistration = registerMode;
+    const shouldOpenQuestionnaire = isSelfRegistration && registerWantQuestionnaireNow;
     const name = sanitizeInput(newClient.name, 100).trim();
     const username = sanitizeInput(newClient.username, 50).trim().toLowerCase();
     const password = newClient.password;
@@ -2745,17 +2850,24 @@ Reglas:
     const usernameOk = /^[a-z0-9_-]{3,50}$/.test(normalizedId);
 
     if (!name || !usernameOk || !password || !validatePassword(password)) {
-      showError("Datos inválidos o contraseña débil (mín. 8 caracteres, letra + número)");
+      const message = "Revisa el nombre, el usuario (3-50 caracteres) y la contraseña (mín. 8 caracteres, letra y número).";
+      if (registerMode) setRegisterError(message);
+      else showError(message);
       return;
     }
-    setIsCreatingProfile(true);
-
     const id = normalizedId;
+    if (!allowUserCreation) {
+      const message = 'El registro de nuevas cuentas está cerrado por el entrenador.';
+      if (registerMode) setRegisterError(message);
+      else showError(message);
+      return;
+    }
     if (!registerMode && !isFirebaseAdmin) {
-      setIsCreatingProfile(false);
       showError('Solo el administrador puede crear clientes desde este panel.');
       return;
     }
+    setRegisterError("");
+    setIsCreatingProfile(true);
     let sourceDays = [];
     if (!registerMode && newClient.sourceTemplate.startsWith("tmpl_")) {
       sourceDays = (db.entrenador?.templates || []).find(t => t.id === newClient.sourceTemplate.replace("tmpl_", ""))?.days || [];
@@ -2766,13 +2878,13 @@ Reglas:
       const newUserData = {
         username: id,
         name: name,
-        color: "from-blue-600 to-indigo-500",
+        color: "from-amber-600 to-yellow-500",
         subtitle: registerMode ? "Nuevo usuario" : "Nuevo Plan",
         advice: "A darlo todo.",
         logs: {},
         notes: [],
         questionnaire: {},
-          questionnaireRequired: registerMode ? !!registerWantQuestionnaireNow : !!newClient.questionnaireRequired,
+          questionnaireRequired: isSelfRegistration ? shouldOpenQuestionnaire : !!newClient.questionnaireRequired,
         questionnaireSubmittedAt: null,
         questionnaireUpdatedAt: null,
         createdAt: new Date().toISOString(),
@@ -2780,7 +2892,7 @@ Reglas:
       };
       if (!firebaseFunctions) throw new Error('Cloud Functions no está disponible');
       setIsSyncing(true);
-      const callableName = registerMode ? 'registerClient' : 'adminCreateClient';
+      const callableName = isSelfRegistration ? 'registerClient' : 'adminCreateClient';
       const result = await httpsCallable(firebaseFunctions, callableName)({
         username: id,
         password,
@@ -2788,31 +2900,56 @@ Reglas:
         profile: newUserData
       });
       setIsSyncing(false);
-      if (registerMode && result.data?.customToken) {
-        await setPersistence(firebaseAuth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
-        await signInWithCustomToken(firebaseAuth, result.data.customToken);
-      }
       newUserData.authUid = result.data?.uid || '';
-      // Actualizar estado local también
+      if (isSelfRegistration) {
+        if (!result.data?.customToken) {
+          setShowAddClientModal(false);
+          setRegisterMode(false);
+          setLoginError('La cuenta se creó, pero no se pudo iniciar sesión automáticamente. Accede con tu usuario y contraseña.');
+          return;
+        }
+        try {
+          await setPersistence(firebaseAuth, keepLoggedIn ? browserLocalPersistence : browserSessionPersistence);
+          await signInWithCustomToken(firebaseAuth, result.data.customToken);
+        } catch (signInError) {
+          warn('Account created but automatic sign-in failed:', signInError.code || signInError.message);
+          setShowAddClientModal(false);
+          setRegisterMode(false);
+          setLoginError('La cuenta se creó, pero no se pudo iniciar sesión automáticamente. Accede con tu usuario y contraseña.');
+          return;
+        }
+      }
+
       setDb(prev => ({ ...prev, [id]: newUserData }));
       setCurrentClientId(id);
       setShowAddClientModal(false);
       setRegisterMode(false);
       setNewClient({ name: "", username: "", password: "", sourceTemplate: "", questionnaireRequired: true });
-      if (registerMode) {
+      if (isSelfRegistration) {
+        isFirebaseAdminRef.current = false;
+        loggedInUserRef.current = id;
+        initialSetupDoneRef.current = false;
+        setLoggedInUser(id);
+        setIsFirebaseAdmin(false);
+        setIsAdminMode(false);
+        setDataLoaded(false);
+        setShowQuestionnaire(shouldOpenQuestionnaire);
         showSuccess("Registro completado ✓");
-        if (registerWantQuestionnaireNow) {
-          setShowQuestionnaire(true);
-        }
       } else {
         showSuccess("Cliente " + name + " creado ✓");
       }
     } catch (error) {
       err("❌ Error creando cliente:", error.message);
       setIsSyncing(false);
-      showError(error.code === 'functions/already-exists'
-        ? 'Ese usuario ya existe.'
-        : 'No se pudo crear la cuenta. Comprueba la conexión y el despliegue de Cloud Functions.');
+      const message = error.code === 'functions/already-exists'
+        ? 'Ese usuario ya existe. Elige otro nombre de usuario.'
+        : error.code === 'functions/failed-precondition'
+          ? error.message || 'El registro de nuevas cuentas está cerrado.'
+        : error.code === 'functions/invalid-argument'
+          ? error.message || 'El nombre, usuario o contraseña no son válidos.'
+          : 'No se pudo crear la cuenta. Comprueba la conexión e inténtalo de nuevo.';
+      if (registerMode) setRegisterError(message);
+      else showError(message);
     } finally {
       setIsCreatingProfile(false);
     }
@@ -2915,9 +3052,10 @@ Reglas:
       .filter(({ id, profile, followUp }) => {
         const matchesQuery = !query || `${id} ${profile.name || ''} ${profile.subtitle || ''}`.toLocaleLowerCase('es').includes(query);
         const matchesFilter = clientFollowUpFilter === 'all'
-          || (clientFollowUpFilter === 'attention' && (followUp.key !== 'active' || followUp.actionOverdue || followUp.pendingFeedbackCount > 0))
+          || (clientFollowUpFilter === 'attention' && (followUp.key !== 'active' || followUp.actionOverdue || followUp.pendingFeedbackCount > 0 || followUp.passwordRecoveryPending))
           || (clientFollowUpFilter === 'follow-up-overdue' && followUp.actionOverdue)
           || (clientFollowUpFilter === 'exercise-feedback' && followUp.pendingFeedbackCount > 0)
+          || (clientFollowUpFilter === 'password-recovery' && followUp.passwordRecoveryPending)
           || (clientFollowUpFilter === 'inactive' && followUp.key === 'inactive')
           || (clientFollowUpFilter === 'questionnaire' && followUp.key === 'questionnaire')
           || (clientFollowUpFilter === 'no-training' && followUp.key === 'no-training')
@@ -2926,6 +3064,7 @@ Reglas:
       })
       .sort((a, b) => {
         if (a.followUp.actionOverdue !== b.followUp.actionOverdue) return a.followUp.actionOverdue ? -1 : 1;
+        if (a.followUp.passwordRecoveryPending !== b.followUp.passwordRecoveryPending) return a.followUp.passwordRecoveryPending ? -1 : 1;
         if (a.followUp.pendingFeedbackCount !== b.followUp.pendingFeedbackCount) return b.followUp.pendingFeedbackCount - a.followUp.pendingFeedbackCount;
         const rank = { questionnaire: 0, inactive: 1, 'no-training': 2, active: 3 };
         return rank[a.followUp.key] - rank[b.followUp.key]
@@ -2934,11 +3073,12 @@ Reglas:
   }, [adminClientEntries, clientFollowUpFilter, clientSearchQuery]);
   const adminFollowUpCounts = useMemo(() => adminClientEntries.reduce((counts, item) => {
     counts[item.followUp.key] = (counts[item.followUp.key] || 0) + 1;
-    if (item.followUp.key !== 'active' || item.followUp.actionOverdue || item.followUp.pendingFeedbackCount > 0) counts.attention += 1;
+    if (item.followUp.key !== 'active' || item.followUp.actionOverdue || item.followUp.pendingFeedbackCount > 0 || item.followUp.passwordRecoveryPending) counts.attention += 1;
     if (item.followUp.actionOverdue) counts.overdueActions += 1;
     counts.pendingFeedback += item.followUp.pendingFeedbackCount;
+    if (item.followUp.passwordRecoveryPending) counts.passwordRecovery += 1;
     return counts;
-  }, { attention: 0, overdueActions: 0, pendingFeedback: 0, questionnaire: 0, inactive: 0, 'no-training': 0, active: 0 }), [adminClientEntries]);
+  }, { attention: 0, overdueActions: 0, pendingFeedback: 0, passwordRecovery: 0, questionnaire: 0, inactive: 0, 'no-training': 0, active: 0 }), [adminClientEntries]);
 
   // --- UI RENDER ---
 
@@ -2991,11 +3131,41 @@ Reglas:
             <label className="flex items-center gap-2 text-zinc-400 text-xs font-bold pl-2 cursor-pointer mt-2"><input type="checkbox" checked={keepLoggedIn} onChange={(e) => setKeepLoggedIn(e.target.checked)} className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-amber-500 accent-amber-500" />Mantener sesión iniciada</label>
             {loginError && <p className="text-red-500 text-xs font-bold text-center bg-red-500/10 p-2 rounded-lg">{String(loginError)}</p>}
             <button onClick={authenticate} disabled={isAuthenticating} className={`w-full bg-amber-500 hover:bg-amber-400 text-black font-black py-5 rounded-2xl uppercase text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-4 ${isAuthenticating ? 'opacity-60' : ''}`}>{isAuthenticating ? <Loader2 className="animate-spin mx-auto" size={20}/> : 'Acceder'}</button>
-            <button onClick={() => { setRegisterMode(true); setRegisterStep("choice"); setRegisterWantQuestionnaireNow(true); setShowAddClientModal(true); setNewClient({ name: '', username: '', password: '', sourceTemplate: '', questionnaireRequired: true }); }} className="w-full border border-amber-500/20 bg-amber-500/10 text-amber-300 font-black py-4 rounded-2xl uppercase text-[10px] shadow-lg shadow-amber-500/10 active:scale-95 transition-all">Registrarse</button>
+            {registrationConfigLoaded && allowUserCreation ? (
+              <button onClick={() => { setRegisterError(""); setLoginError(""); setRegisterMode(true); setRegisterStep("choice"); setRegisterWantQuestionnaireNow(true); setShowAddClientModal(true); setNewClient({ name: '', username: '', password: '', sourceTemplate: '', questionnaireRequired: true }); }} className="w-full border border-amber-500/20 bg-amber-500/10 text-amber-300 font-black py-4 rounded-2xl uppercase text-[10px] shadow-lg shadow-amber-500/10 active:scale-95 transition-all">Registrarse</button>
+            ) : (
+              <p role="status" className="rounded-xl border border-white/5 bg-white/[0.03] p-3 text-center text-[10px] font-semibold text-zinc-500">{registrationConfigLoaded ? 'El registro está cerrado temporalmente.' : 'Comprobando disponibilidad de registro…'}</p>
+            )}
+            <button type="button" onClick={() => { setRecoveryUsername(loginUser); setRecoveryRequestError(''); setRecoveryRequestSent(false); setShowRecoveryModal(true); }} className="w-full py-2 text-center text-[10px] font-bold text-zinc-400 underline decoration-zinc-700 underline-offset-4 hover:text-amber-300">¿Olvidaste tu contraseña?</button>
           </div>
+          {showRecoveryModal && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-6 backdrop-blur-sm">
+              <div className="w-full max-w-sm space-y-4 rounded-3xl border border-amber-500/20 bg-zinc-950 p-6 text-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-black uppercase text-amber-400">Recuperar acceso</h3>
+                  <button type="button" aria-label="Cerrar" onClick={() => setShowRecoveryModal(false)} className="rounded-lg p-2 text-zinc-500 hover:text-white"><X size={18}/></button>
+                </div>
+                {recoveryRequestSent ? (
+                  <>
+                    <p role="status" className="text-xs leading-relaxed text-zinc-300">Si los datos corresponden a una cuenta, el entrenador recibirá la solicitud. Contacta con él por tu canal habitual para verificar tu identidad.</p>
+                    <button type="button" onClick={() => setShowRecoveryModal(false)} className="w-full rounded-xl bg-amber-500 py-3 text-[10px] font-black uppercase text-black">Entendido</button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs leading-relaxed text-zinc-400">Las cuentas usan un usuario interno y no reciben correos de recuperación. Envía una solicitud al entrenador; no se revelará si el usuario existe.</p>
+                    <label className="block text-[9px] font-black uppercase text-zinc-500">Nombre de usuario
+                      <input value={recoveryUsername} onChange={event => { setRecoveryUsername(event.target.value); setRecoveryRequestError(''); }} maxLength={50} autoCapitalize="none" autoCorrect="off" autoComplete="username" className="mt-2 w-full rounded-xl border border-zinc-700 bg-black px-4 py-3 text-sm font-bold text-white outline-none focus:border-amber-500" />
+                    </label>
+                    {recoveryRequestError && <p role="alert" className="text-xs font-semibold text-red-300">{recoveryRequestError}</p>}
+                    <button type="button" onClick={submitPasswordRecoveryRequest} disabled={isRequestingRecovery} className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3 text-[10px] font-black uppercase text-black disabled:opacity-50">{isRequestingRecovery ? <Loader2 size={14} className="animate-spin"/> : <Key size={14}/>}Enviar solicitud</button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           {showAddClientModal && registerMode && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
-              <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-amber-500/25 bg-black text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
+              <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-amber-500/25 bg-black text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
                 <div className="px-6 pt-6 pb-4 bg-gradient-to-br from-amber-500/18 via-black to-zinc-950 border-b border-amber-500/10 relative overflow-hidden">
                   <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-amber-500/15 blur-3xl" />
                   <div className="relative inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-amber-200">
@@ -3020,10 +3190,12 @@ Reglas:
                   {registerStep === 'form' && (
                     <>
                       <div className="grid gap-3 rounded-[1.5rem] border border-amber-500/10 bg-zinc-950 p-4">
-                        <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.username} onChange={e=>setNewClient({...newClient, username:e.target.value})} />
-                        <input type="password" placeholder="Contraseña" className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.password} onChange={e=>setNewClient({...newClient, password:e.target.value})} />
-                        <input type="text" placeholder="Nombre completo" className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.name} onChange={e=>setNewClient({...newClient, name:e.target.value})} />
+                        <input type="text" placeholder="Usuario" autoCapitalize="none" autoCorrect="off" autoComplete="username" maxLength={50} className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.username} onChange={e=>{ setRegisterError(""); setNewClient({...newClient, username:e.target.value}); }} />
+                        <input type="password" placeholder="Contraseña" autoComplete="new-password" maxLength={128} className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.password} onChange={e=>{ setRegisterError(""); setNewClient({...newClient, password:e.target.value}); }} />
+                        <input type="text" placeholder="Nombre completo" autoComplete="name" maxLength={100} className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-zinc-600 focus:border-amber-500" value={newClient.name} onChange={e=>{ setRegisterError(""); setNewClient({...newClient, name:e.target.value}); }} />
                       </div>
+
+                      {registerError && <p role="alert" className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs font-semibold text-red-300">{registerError}</p>}
 
                       <div className="grid gap-3 rounded-[1.5rem] border border-amber-500/10 bg-zinc-950 p-4">
                         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">Resumen del registro</p>
@@ -3031,8 +3203,8 @@ Reglas:
                       </div>
 
                       <div className="flex gap-3">
-                        <button onClick={runCreateProfile} disabled={isCreatingProfile} className={`flex-1 rounded-2xl bg-amber-500 px-4 py-4 text-[10px] font-black uppercase text-black shadow-lg shadow-amber-500/20 active:scale-95 transition-all ${isCreatingProfile ? 'opacity-60' : ''}`}>{isCreatingProfile ? <><Loader2 className="animate-spin mx-auto" size={14}/> CREANDO...</> : 'Crear cuenta'}</button>
-                        <button type="button" onClick={()=>{ setShowAddClientModal(false); setRegisterMode(false); setRegisterStep('choice'); setRegisterWantQuestionnaireNow(true); }} className="rounded-2xl border border-white/10 bg-black px-4 py-4 text-[10px] font-black uppercase text-white">Cerrar</button>
+                        <button type="button" onClick={runCreateProfile} disabled={isCreatingProfile} className={`flex-1 rounded-2xl bg-amber-500 px-4 py-4 text-[10px] font-black uppercase text-black shadow-lg shadow-amber-500/20 active:scale-95 transition-all ${isCreatingProfile ? 'opacity-60' : ''}`}>{isCreatingProfile ? <><Loader2 className="animate-spin mx-auto" size={14}/> CREANDO...</> : 'Crear cuenta'}</button>
+                        <button type="button" onClick={()=>{ setShowAddClientModal(false); setRegisterMode(false); setRegisterError(""); setRegisterStep('choice'); setRegisterWantQuestionnaireNow(true); }} className="rounded-2xl border border-white/10 bg-black px-4 py-4 text-[10px] font-black uppercase text-white">Cerrar</button>
                       </div>
                     </>
                   )}
@@ -3082,7 +3254,7 @@ Reglas:
         isOpen={showQuestionnaire && !isFirebaseAdmin}
         clientName={String(client?.name || loggedInUser || '')}
         initialData={client?.questionnaire || {}}
-        required={client?.questionnaireRequired === true}
+        required={client.questionnaireRequired === true}
         onSubmit={saveQuestionnaire}
       />
       <BackButtonExitHandler
@@ -3156,25 +3328,40 @@ Reglas:
               />
             )}
 
+            {!isFirebaseAdmin && !client.questionnaireSubmittedAt && (
+              <button
+                type="button"
+                onClick={() => setShowQuestionnaire(true)}
+                className="flex w-full items-center justify-between gap-4 rounded-2xl border border-amber-500/20 bg-zinc-900/80 p-4 text-left transition-colors hover:border-amber-400/40"
+              >
+                <span>
+                  <span className="block text-sm font-black text-amber-300">Completar cuestionario</span>
+                  <span className="mt-1 block text-xs text-zinc-400">Aún no has enviado tus datos. Puedes hacerlo ahora.</span>
+                </span>
+                <ChevronRight size={18} className="shrink-0 text-amber-400" />
+              </button>
+            )}
+
             {isAdminMode && (
               <div className="bg-zinc-900 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl space-y-6 mt-8">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500"><Users size={14} className="text-amber-500" /> Clientes ({Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').length})</div>
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase">
                     <button onClick={fetchSyncPreview} disabled={isForceReloading || syncPreviewLoading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={(isForceReloading || syncPreviewLoading) ? 'animate-spin' : ''}/> {syncPreviewLoading ? '...' : 'Sync'}</button>
-                    <button onClick={() => setAllowUserCreation(!allowUserCreation)} className={`px-3 py-1.5 rounded-lg active:scale-95 font-black uppercase ${allowUserCreation ? 'bg-zinc-800 text-amber-300 border border-amber-500/20' : 'bg-amber-500 text-black border border-amber-500/20'}`}>
-                      {allowUserCreation ? 'Desactivar creación' : 'Activar creación'}
+                    <button onClick={toggleUserCreation} disabled={!registrationConfigLoaded || isSyncing} className={`px-3 py-1.5 rounded-lg active:scale-95 font-black uppercase disabled:opacity-50 ${allowUserCreation ? 'bg-zinc-800 text-amber-300 border border-amber-500/20' : 'bg-amber-500 text-black border border-amber-500/20'}`}>
+                      {!registrationConfigLoaded ? 'Comprobando...' : allowUserCreation ? 'Desactivar creación' : 'Activar creación'}
                     </button>
-                    {allowUserCreation && (
+                    {registrationConfigLoaded && allowUserCreation && (
                       <button onClick={() => { setRegisterMode(false); setShowAddClientModal(true); }} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
                     )}
                   </div>
                 </div>
                 {!clientDetailOnly && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {[
                         { key: 'attention', label: 'Revisar', value: adminFollowUpCounts.attention, color: 'text-amber-300' },
+                        { key: 'password-recovery', label: 'Recuperar acceso', value: adminFollowUpCounts.passwordRecovery, color: 'text-cyan-300' },
                         { key: 'exercise-feedback', label: 'Opiniones nuevas', value: adminFollowUpCounts.pendingFeedback, color: 'text-rose-300' },
                         { key: 'follow-up-overdue', label: 'Seguimientos vencidos', value: adminFollowUpCounts.overdueActions, color: 'text-red-300' },
                         { key: 'questionnaire', label: 'Cuestionario', value: adminFollowUpCounts.questionnaire, color: 'text-red-300' },
@@ -3195,6 +3382,7 @@ Reglas:
                       <select value={clientFollowUpFilter} onChange={event => setClientFollowUpFilter(event.target.value)} aria-label="Filtrar clientes por seguimiento" className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-xs font-bold text-zinc-200 outline-none focus:border-amber-500/50">
                         <option value="all">Todos los estados</option>
                         <option value="attention">Necesitan revisión</option>
+                        <option value="password-recovery">Solicitudes de recuperación</option>
                         <option value="exercise-feedback">Feedback de ejercicios</option>
                         <option value="follow-up-overdue">Seguimiento vencido</option>
                         <option value="questionnaire">Cuestionario pendiente</option>
@@ -3240,7 +3428,9 @@ Reglas:
                           <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${statusStyles[followUp.key]}`}>{followUp.label}</span>
                         </div>
                         <p className="mt-2 text-[8px] text-zinc-500">Última actividad: {followUp.lastActivity ? followUp.lastActivity.toLocaleDateString('es-ES') : 'Sin actividad registrada'}</p>
+                        {followUp.passwordRecoveryPending && <p className="mt-1 text-[8px] font-black uppercase text-cyan-300">Solicita recuperar acceso</p>}
                         {followUp.nextAction && <p className={`mt-1 truncate text-[8px] font-bold ${followUp.actionOverdue ? 'text-red-300' : 'text-amber-300'}`}>{followUp.actionOverdue ? 'Seguimiento vencido: ' : 'Próximo seguimiento: '}{followUp.nextAction.title}</p>}
+                        {followUp.passwordRecoveryPending && <p className="mt-1 text-[8px] font-black uppercase text-cyan-300">Solicitó recuperar contraseña</p>}
                         <button type="button" aria-label={`Ver detalles de ${String(c.name || id)}`} onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="absolute top-3 right-3 text-zinc-600 hover:text-amber-500 transition-colors"><Eye size={14}/></button>
                       </div>
                     );
@@ -4066,6 +4256,7 @@ Reglas:
                         <ExerciseCard
                           key={`${liveDay.id}-${selectedDayExerciseIndex}`}
                           ex={exercise}
+                          customExerciseImages={customExerciseImages}
                           workoutLogs={workoutLogs}
                           isAdmin={isAdminMode}
                           onAddLog={addLogRecord}
@@ -4104,7 +4295,7 @@ Reglas:
                         >
                           <div className="relative aspect-[4/3] overflow-hidden bg-zinc-800">
                             <img
-                              src={exercise.img || FALLBACK_IMG}
+                              src={customExerciseImages[exercise.name] || exercise.img || FALLBACK_IMG}
                               alt=""
                               loading="lazy"
                               decoding="async"
@@ -4147,15 +4338,15 @@ Reglas:
                         <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Zap size={12}/> Superserie</span>
                         <div className="h-px flex-1 bg-purple-500/20" />
                       </div>
-                      <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
+                      <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} customExerciseImages={customExerciseImages} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
                       <div className="flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center"><Zap size={14} className="text-purple-400"/></div></div>
-                      <ExerciseCard key={`${liveDay.id}-${nextOriginalIdx}`} ex={nextEx} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[nextEx.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
+                      <ExerciseCard key={`${liveDay.id}-${nextOriginalIdx}`} ex={nextEx} customExerciseImages={customExerciseImages} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[nextEx.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
                     </div>
                   );
                   i += 2;
                 } else {
                   items.push(
-                    <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
+                    <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} customExerciseImages={customExerciseImages} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
                   );
                   i += 1;
                 }
@@ -4528,6 +4719,12 @@ Reglas:
 
                 return (
                   <>
+                    {clientData.passwordRecoveryRequest?.status === 'pending' && (
+                      <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-4">
+                        <p className="flex items-center gap-2 text-[10px] font-black uppercase text-cyan-300"><Key size={14}/> Solicitud de recuperación</p>
+                        <p className="mt-1 text-[10px] leading-relaxed text-zinc-300">Recibida {clientData.passwordRecoveryRequest.requestedAt ? new Date(clientData.passwordRecoveryRequest.requestedAt).toLocaleString('es-ES') : ''}. Verifica la identidad por un canal conocido antes de restablecer y entregar la nueva contraseña.</p>
+                      </div>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       {checklist.map(item => (
                         <div key={item.label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
@@ -4549,9 +4746,14 @@ Reglas:
                         <h4 className="text-amber-500 text-[10px] font-black uppercase flex items-center gap-2"><Sparkles size={12}/> Cuestionario</h4>
                         <button
                           onClick={() => updateUserInCloud(clientInfoTarget, u => ({ ...u, questionnaireRequired: !(u.questionnaireRequired === true) }))}
-                          className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase ${clientData.questionnaireSubmittedAt ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20' : 'bg-red-500/15 text-red-300 border border-red-500/20'}`}
+                          aria-pressed={clientData.questionnaireRequired === true}
+                          className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase ${clientData.questionnaireRequired === true ? 'border-amber-500/20 bg-amber-500/15 text-amber-300' : 'border-red-500/20 bg-red-500/15 text-red-300'}`}
                         >
-                          {clientData.questionnaireSubmittedAt ? 'Cuestionario realizado' : 'Pedir cuestionario'}
+                          {clientData.questionnaireRequired === true
+                            ? 'Dejar de solicitar'
+                            : clientData.questionnaireSubmittedAt
+                              ? 'Solicitar de nuevo'
+                              : 'Pedir cuestionario'}
                         </button>
                       </div>
 
@@ -4586,20 +4788,7 @@ Reglas:
                             </div>
                           </div>
 
-                          <details className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                            <summary className="cursor-pointer list-none text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">Ver cuestionario completo</summary>
-                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[9px]">
-                              {Object.entries(questionnaire).map(([key, value]) => {
-                                const readable = String(value || '—');
-                                return (
-                                  <div key={key} className="rounded-xl bg-zinc-900 p-3 border border-zinc-800">
-                                    <p className="text-zinc-500 uppercase font-black">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                                    <p className="text-zinc-200 mt-1 whitespace-pre-wrap leading-relaxed">{readable}</p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </details>
+                          <QuestionnaireAnswers questionnaire={questionnaire} />
                         </div>
                       ) : (
                         <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 p-4 text-sm text-zinc-400">
@@ -4610,6 +4799,8 @@ Reglas:
 
                     <div className="border-t border-zinc-800 pt-4 space-y-3">
                       <h4 className="text-amber-500 text-[10px] font-black uppercase flex items-center gap-2"><Key size={12}/> Resetear Contraseña</h4>
+                      <p className="text-[9px] leading-relaxed text-zinc-500">Usa una contraseña temporal fuerte y entrégala al cliente por un canal verificado, no por una notificación pública.</p>
+                      <p className="text-[9px] leading-relaxed text-zinc-500">Usa una contraseña temporal fuerte y entrégala al cliente por un canal verificado, nunca en un aviso público.</p>
                       <input type="password" placeholder="Nueva contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwd} onChange={e => setAdminResetPwd(e.target.value)} />
                       <input type="password" placeholder="Confirmar contraseña" className="w-full bg-zinc-800 border border-zinc-700 outline-none text-white p-3 rounded-xl text-xs" value={adminResetPwdConfirm} onChange={e => setAdminResetPwdConfirm(e.target.value)} />
                       {adminResetError && <p className="text-red-500 text-[10px] text-center">{String(adminResetError)}</p>}
@@ -4629,12 +4820,18 @@ Reglas:
         isOpen={imageManagerOpen}
         onClose={() => { setImageManagerOpen(false); setNewExImageMode(false); }}
         exerciseName={imageManagerTarget.exName}
-        onSelectImage={(imgData) => {
+        onSelectImage={async (imgData) => {
           if (newExImageMode) {
-            setNewEx(prev => ({...prev, img: imgData}));
+            const exerciseName = newEx.name.trim();
+            if (!exerciseName) {
+              showError('Escribe primero el nombre del ejercicio para asociar la imagen.');
+              throw new Error('Exercise name is required');
+            }
+            const imageUrl = await updateImageHook(null, exerciseName, imgData);
+            setNewEx(prev => ({...prev, img: imageUrl}));
             setNewExImageMode(false);
           } else {
-            updateImageHook(imageManagerTarget.dayId, imageManagerTarget.exName, imgData);
+            await updateImageHook(imageManagerTarget.dayId, imageManagerTarget.exName, imgData);
           }
         }}
       />

@@ -38,12 +38,16 @@ service cloud.firestore {
     }
 
     match /athlos_public/{documentId} {
-      allow get: if signedIn() && documentId == 'config';
+      allow get: if (signedIn() && documentId == 'config') || documentId == 'registration';
       allow list: if false;
       allow create, update, delete: if isAdmin();
     }
 
     match /athlos_admin_followups/{username} {
+      allow read, write: if isAdmin();
+    }
+
+    match /athlos_password_recovery/{username} {
       allow read, write: if isAdmin();
     }
 
