@@ -2260,19 +2260,6 @@ export default function App() {
     return source.filter(e => e.mus === group).sort((a, b) => a.name.localeCompare(b.name));
   };
 
-  // Registrar usuario como eliminado para que INITIAL_DB no lo re-agregue
-  const trackDeletedUser = async (userId) => {
-    if (!db_cloud) return;
-    try {
-      const metaRef = doc(db_cloud, COLLECTION_NAME, '_deleted_users');
-      const metaSnap = await getDoc(metaRef);
-      const current = metaSnap.exists() ? (metaSnap.data().ids || []) : [];
-      if (!current.includes(userId)) {
-        await setDoc(metaRef, { ids: [...current, userId] });
-      }
-    } catch (e) { warn('Error tracking deleted user:', e); }
-  };
-
   const removeClientAccount = async () => {
     if (isFirebaseAdmin || !firebaseFunctions) return;
     setIsSyncing(true);
@@ -2307,8 +2294,6 @@ export default function App() {
         setIsEditingClientRoutine(false);
       }
       
-      // Registrar como eliminado y borrar perfil + cuenta Auth desde backend confiable.
-      await trackDeletedUser(clientId);
       if (!firebaseFunctions) throw new Error('Cloud Functions no está disponible');
       await httpsCallable(firebaseFunctions, 'adminDeleteClient')({ username: clientId });
       
@@ -2958,7 +2943,7 @@ Reglas:
       return;
     }
     const id = normalizedId;
-    if (!allowUserCreation) {
+    if (isSelfRegistration && !allowUserCreation) {
       const message = 'El registro de nuevas cuentas está cerrado por el entrenador.';
       if (registerMode) setRegisterError(message);
       else showError(message);
@@ -3473,16 +3458,14 @@ Reglas:
                   </section>
                 )}
                 {!clientDetailOnly && (
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-zinc-500"><Users size={14} className="text-amber-500" /> Clientes ({Object.keys(db).filter(id => id !== 'entrenador' && id !== '_deleted_users').length})</div>
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase">
-                    <button onClick={fetchSyncPreview} disabled={isForceReloading || syncPreviewLoading} className="bg-zinc-800 text-emerald-500 px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 disabled:opacity-50"><RefreshCw size={12} className={(isForceReloading || syncPreviewLoading) ? 'animate-spin' : ''}/> {syncPreviewLoading ? '...' : 'Sync'}</button>
-                    <button onClick={toggleUserCreation} disabled={!registrationConfigLoaded || isSyncing} className={`px-3 py-1.5 rounded-lg active:scale-95 font-black uppercase disabled:opacity-50 ${allowUserCreation ? 'bg-zinc-800 text-amber-300 border border-amber-500/20' : 'bg-amber-500 text-black border border-amber-500/20'}`}>
+                  <div className="grid w-full grid-cols-3 gap-2 sm:w-64">
+                    <button onClick={fetchSyncPreview} disabled={isForceReloading || syncPreviewLoading} className="flex h-10 w-full min-w-0 items-center justify-center gap-1 rounded-lg bg-zinc-800 px-1.5 text-center text-[8px] font-black uppercase leading-tight text-emerald-500 active:scale-95 disabled:opacity-50"><RefreshCw size={12} className={`shrink-0 ${(isForceReloading || syncPreviewLoading) ? 'animate-spin' : ''}`}/> {syncPreviewLoading ? '...' : 'Sync'}</button>
+                    <button onClick={toggleUserCreation} disabled={!registrationConfigLoaded || isSyncing} className={`flex h-10 w-full min-w-0 items-center justify-center rounded-lg px-1.5 text-center text-[8px] font-black uppercase leading-tight active:scale-95 disabled:opacity-50 ${allowUserCreation ? 'border border-amber-500/20 bg-zinc-800 text-amber-300' : 'border border-amber-500/20 bg-amber-500 text-black'}`}>
                       {!registrationConfigLoaded ? 'Comprobando...' : allowUserCreation ? 'Desactivar creación' : 'Activar creación'}
                     </button>
-                    {registrationConfigLoaded && allowUserCreation && (
-                      <button onClick={() => { setRegisterMode(false); setShowAddClientModal(true); }} className="bg-amber-500 text-black px-3 py-1.5 rounded-lg active:scale-95 flex items-center gap-1 font-black"><Plus size={12}/> Nuevo</button>
-                    )}
+                    <button onClick={() => { setRegisterMode(false); setShowAddClientModal(true); }} disabled={!registrationConfigLoaded || isSyncing} className="flex h-10 w-full min-w-0 items-center justify-center gap-1 rounded-lg bg-amber-500 px-1.5 text-center text-[8px] font-black uppercase leading-tight text-black active:scale-95 disabled:opacity-50"><Plus size={12} className="shrink-0"/> Nuevo</button>
                   </div>
                   </div>
                 )}
@@ -3490,16 +3473,30 @@ Reglas:
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {[
+                        { key: 'all', label: 'Todos los clientes', compactLabel: 'Todos clientes', value: adminClientEntries.length, color: 'text-amber-300' },
                         { key: 'attention', label: 'Revisar', value: adminFollowUpCounts.attention, color: 'text-amber-300' },
-                        { key: 'password-recovery', label: 'Recuperar acceso', value: adminFollowUpCounts.passwordRecovery, color: 'text-cyan-300' },
-                        { key: 'exercise-feedback', label: 'Opiniones nuevas', value: adminFollowUpCounts.pendingFeedback, color: 'text-rose-300' },
-                        { key: 'follow-up-overdue', label: 'Seguimientos vencidos', value: adminFollowUpCounts.overdueActions, color: 'text-red-300' },
+                        { key: 'password-recovery', label: 'Recuperar acceso', compactLabel: 'Recup. acceso', value: adminFollowUpCounts.passwordRecovery, color: 'text-cyan-300' },
+                        { key: 'exercise-feedback', label: 'Opiniones nuevas', compactLabel: 'Opin. nuevas', value: adminFollowUpCounts.pendingFeedback, color: 'text-rose-300' },
+                        { key: 'follow-up-overdue', label: 'Seguimientos vencidos', compactLabel: 'Seg. vencidos', value: adminFollowUpCounts.overdueActions, color: 'text-red-300' },
                         { key: 'questionnaire', label: 'Cuestionario', value: adminFollowUpCounts.questionnaire, color: 'text-red-300' },
                         { key: 'inactive', label: '+14 días', value: adminFollowUpCounts.inactive, color: 'text-orange-300' },
                         { key: 'no-training', label: 'Sin registros', value: adminFollowUpCounts['no-training'], color: 'text-zinc-300' }
                       ].map(item => (
-                        <button key={item.key} onClick={() => setClientFollowUpFilter(item.key)} aria-pressed={clientFollowUpFilter === item.key} className="min-h-[76px] min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/70 p-2.5 text-left hover:border-amber-500/30">
-                          <span className="block break-words text-[7px] font-black uppercase leading-tight text-zinc-400 sm:text-[8px]">{item.label}</span>
+                        <button
+                          key={item.key}
+                          onClick={() => {
+                            setClientFollowUpFilter(item.key);
+                            if (item.key === 'all') {
+                              setClientSearchQuery('');
+                              document.getElementById('admin-client-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          aria-pressed={clientFollowUpFilter === item.key}
+                          aria-label={`${item.label}: ${item.value}`}
+                          title={item.label}
+                          className="min-h-[76px] min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/70 p-2.5 text-left hover:border-amber-500/30"
+                        >
+                          <span className="block truncate whitespace-nowrap text-[7px] font-black uppercase leading-tight text-zinc-400 sm:text-[8px]">{item.compactLabel || item.label}</span>
                           <span className={`mt-1 block text-xl font-black ${item.color}`}>{item.value}</span>
                         </button>
                       ))}
@@ -3521,7 +3518,7 @@ Reglas:
                         <option value="active">Al día</option>
                       </select>
                     </div>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">{filteredAdminClients.length} de {adminClientEntries.length} clientes</p>
+                    <p id="admin-client-list" className="scroll-mt-4 text-[9px] font-bold uppercase tracking-wider text-zinc-600">{filteredAdminClients.length} de {adminClientEntries.length} clientes</p>
                     <div className="grid grid-cols-2 gap-3">
                     {filteredAdminClients.map(({ id, profile: c, followUp }) => {
                     const isSelected = editingClientId === id;
@@ -3561,7 +3558,21 @@ Reglas:
                         {followUp.passwordRecoveryPending && <p className="mt-1 text-[8px] font-black uppercase text-cyan-300">Solicita recuperar acceso</p>}
                         {followUp.nextAction && <p className={`mt-1 truncate text-[8px] font-bold ${followUp.actionOverdue ? 'text-red-300' : 'text-amber-300'}`}>{followUp.actionOverdue ? 'Seguimiento vencido: ' : 'Próximo seguimiento: '}{followUp.nextAction.title}</p>}
                         {followUp.passwordRecoveryPending && <p className="mt-1 text-[8px] font-black uppercase text-cyan-300">Solicitó recuperar contraseña</p>}
-                        <button type="button" aria-label={`Ver detalles de ${String(c.name || id)}`} onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="absolute top-3 right-3 text-zinc-600 hover:text-amber-500 transition-colors"><Eye size={14}/></button>
+                        <div className="absolute top-3 right-3 flex items-center gap-2">
+                          <button type="button" aria-label={`Ver detalles de ${String(c.name || id)}`} onClick={(e) => { e.stopPropagation(); setClientInfoTarget(id); setShowClientInfoModal(true); setAdminResetPwd(""); setAdminResetPwdConfirm(""); setAdminResetError(""); setAdminResetSuccess(""); }} className="text-zinc-600 transition-colors hover:text-amber-500"><Eye size={14}/></button>
+                          <button
+                            type="button"
+                            aria-label={`Eliminar cliente ${String(c.name || id)}`}
+                            onClick={event => {
+                              event.stopPropagation();
+                              setClientToDelete(id);
+                              setShowDeleteConfirmModal(true);
+                            }}
+                            className="text-zinc-600 transition-colors hover:text-red-400"
+                          >
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -4815,8 +4826,8 @@ Reglas:
               <div className="flex justify-between items-center"><h3 className="text-red-500 font-black uppercase text-sm flex items-center gap-2"><Trash2 size={18}/> Eliminar Cliente</h3><button onClick={()=>{setShowDeleteConfirmModal(false); setClientToDelete(null);}}><X size={20} className="text-zinc-500"/></button></div>
               <p className="text-zinc-300 text-sm">¿Eliminar permanentemente a <strong className="text-red-400">{String(clientToDelete)}</strong>? Esta acción no se puede deshacer.</p>
               <div className="flex gap-2">
-                <button onClick={() => deleteClientFromAdmin(clientToDelete)} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl text-[10px] uppercase active:scale-95">SÍ, ELIMINAR</button>
-                <button onClick={()=>{setShowDeleteConfirmModal(false); setClientToDelete(null);}} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 rounded-xl text-[10px] uppercase">CANCELAR</button>
+                <button onClick={() => deleteClientFromAdmin(clientToDelete)} disabled={isSyncing} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl text-[10px] uppercase active:scale-95 disabled:cursor-wait disabled:opacity-60">{isSyncing ? 'ELIMINANDO...' : 'SÍ, ELIMINAR'}</button>
+                <button onClick={()=>{setShowDeleteConfirmModal(false); setClientToDelete(null);}} disabled={isSyncing} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 rounded-xl text-[10px] uppercase disabled:opacity-50">CANCELAR</button>
               </div>
            </div>
         </div>

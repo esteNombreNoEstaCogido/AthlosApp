@@ -1,7 +1,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 initializeApp();
 
@@ -128,7 +128,6 @@ exports.registerClient = onCall({ region: REGION }, async (request) => {
 
 exports.adminCreateClient = onCall({ region: REGION }, async (request) => {
   requireAdmin(request);
-  await requireRegistrationEnabled();
   const account = await createClientAccount(request.data || {}, true);
   return { uid: account.uid };
 });
@@ -203,6 +202,9 @@ exports.adminDeleteClient = onCall({ region: REGION }, async (request) => {
   if (uid) await auth.deleteUser(uid).catch(error => {
     if (error.code !== 'auth/user-not-found') throw error;
   });
+  await firestore.collection(CLIENTS).doc('_deleted_users').set({
+    ids: FieldValue.arrayUnion(username)
+  }, { merge: true });
   await firestore.collection(ADMIN_FOLLOWUPS).doc(username).delete();
   await firestore.collection(PASSWORD_RECOVERY).doc(username).delete();
   await profileRef.delete();

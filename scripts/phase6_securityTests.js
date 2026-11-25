@@ -36,10 +36,11 @@ const checks = [
   ['Recovery requests return a non-enumerating response', /const acceptedResponse = \{ accepted: true \}/.test(functions) && /if \(!profile\.exists \|\| !profile\.data\(\)\.authUid\) return acceptedResponse/.test(functions)],
   ['Recovery request documents are admin-only', /match \/athlos_password_recovery\/\{username\} \{\s*allow read, write: if isAdmin\(\);/s.test(rules)],
   ['Public can read only the registration availability document', /allow get: if \(signedIn\(\) && documentId == 'config'\) \|\| documentId == 'registration'/.test(rules)],
-  ['Registration setting is persisted in public config and enforced by Functions', /doc\(db_cloud, 'athlos_public', 'registration'\)/.test(app) && /const requireRegistrationEnabled/.test(functions) && (functions.match(/await requireRegistrationEnabled\(\)/g) || []).length >= 2],
+  ['Public registration is gated while admin creation stays independent', /exports\.registerClient[\s\S]*?await requireRegistrationEnabled\(\)/.test(functions) && /exports\.adminCreateClient[\s\S]*?requireAdmin\(request\);[\s\S]*?createClientAccount/.test(functions) && !/exports\.adminCreateClient[\s\S]*?await requireRegistrationEnabled\(\)/.test(functions)],
   ['Password reset resolves the private recovery request', /collection\(PASSWORD_RECOVERY\)\.doc\(username\)\.set/.test(functions)],
   ['Client registration requires questionnaire preference to be persisted', /questionnaireRequired:\s*isSelfRegistration\s*\?\s*shouldOpenQuestionnaire/.test(app)],
-  ['Registration switch is stored in Firestore and enforced server-side', /setDoc\(doc\(db_cloud, 'athlos_public', 'registration'\)/.test(app) && /const requireRegistrationEnabled/.test(functions) && (functions.match(/await requireRegistrationEnabled\(\)/g) || []).length === 2],
+  ['Registration switch is stored and enforced only for public signups', /setDoc\(doc\(db_cloud, 'athlos_public', 'registration'\)/.test(app) && /exports\.registerClient[\s\S]*?await requireRegistrationEnabled\(\)/.test(functions) && !/exports\.adminCreateClient[\s\S]*?await requireRegistrationEnabled\(\)/.test(functions)],
+  ['Admin deletion writes the deletion marker through the callable backend', !/trackDeletedUser/.test(app) && /exports\.adminDeleteClient[\s\S]*?FieldValue\.arrayUnion\(username\)/.test(functions)],
   ['Recovery request endpoint is unauthenticated without account enumeration', /exports\.requestPasswordRecovery\s*=\s*onCall/.test(functions) && /return acceptedResponse/.test(functions) && /5 \* 60 \* 1000/.test(functions)],
   ['Recovery UI calls the recovery endpoint', /httpsCallable\(firebaseFunctions, 'requestPasswordRecovery'\)/.test(app)],
 ];
