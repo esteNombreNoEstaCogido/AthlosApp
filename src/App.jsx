@@ -24,7 +24,7 @@ import { PhotoComparator } from "./components/PhotoComparator.jsx";
 import { AdminExerciseFeedbackInbox, ClientExerciseFeedback } from "./components/ExerciseFeedback.jsx";
 import { COLOR_PALETTES, getPaletteById } from "./utils/colorPalettes.js";
 import { parseWorkoutLogDate as parseDateLog, toLocalDateKey, buildMonthCalendarDays, getWeeklyGoalProgress, getTrainingDateKeys, recordTrainingDay } from "./utils/workoutCalendar.js";
-import { appendExerciseToWorkoutDay, removeExerciseFromWorkoutDay } from "./utils/workoutExercises.js";
+import { appendExerciseToWorkoutDay, removeExerciseFromWorkoutDay, setExerciseSuperset } from "./utils/workoutExercises.js";
 import { getLatestWeightProgress } from "./utils/workoutProgress.js";
 import html2pdf from "html2pdf.js/dist/html2pdf.bundle.min.js";
 // Importaciones de Firebase
@@ -226,7 +226,7 @@ const generatePDFReport = async (client, days = []) => {
 
   const opt = {
     margin: [8, 8, 8, 8],
-    filename: `${String(safeClient.name || 'cliente').replace(/\s+/g, '_')}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`,
+    filename: `${String(safeClient.name || 'cliente').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().replace(/\s+/g, '_') || 'cliente'}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`,
     image: { type: 'jpeg', quality: 0.95 },
     html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false },
     jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
@@ -242,19 +242,10 @@ const generatePDFReport = async (client, days = []) => {
   document.body.appendChild(container);
 
   try {
-    const filename = `${String(safeClient.name || 'cliente').replace(/\s+/g, '_')}_Plan_Entrenamiento_${new Date().toISOString().split('T')[0]}.pdf`;
-    const blob = await html2pdf().set(opt).from(container).outputPdf('blob');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+    await html2pdf().set(opt).from(container).save(opt.filename);
   } catch (e) {
     console.error('Error generating PDF:', e);
-    alert('Error al generar el PDF: ' + (e.message || e));
+    throw new Error('No se pudo generar o descargar el PDF.');
   } finally {
     if (container.parentNode) container.parentNode.removeChild(container);
   }
@@ -1172,6 +1163,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [isFirebaseAdmin, setIsFirebaseAdmin] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isGeneratingClientPdf, setIsGeneratingClientPdf] = useState(false);
   const [isForceReloading, setIsForceReloading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -1413,7 +1405,13 @@ export default function App() {
 
       const username = String(user.email || '').split('@')[0].toLowerCase();
       try {
-        const tokenResult = await user.getIdTokenResult(true);
+        let tokenResult;
+        try {
+          tokenResult = await user.getIdTokenResult(true);
+        } catch (refreshError) {
+          warn('Could not refresh Firebase auth token; checking cached claims:', refreshError.message);
+          tokenResult = await user.getIdTokenResult();
+        }
         isFirebaseAdminRef.current = tokenResult.claims.admin === true;
         loggedInUserRef.current = username;
         setIsFirebaseAdmin(tokenResult.claims.admin === true);
@@ -1429,6 +1427,8 @@ export default function App() {
         setIsAdminMode(false);
         setLoggedInUser(username);
         setCurrentClientId(username);
+        setDataLoaded(true);
+        showErrorRef.current('No se pudieron verificar los permisos de la cuenta. Comprueba la conexión e inicia sesión de nuevo.');
       } finally {
         setAuthReady(true);
       }
@@ -1750,10 +1750,10 @@ export default function App() {
 
     if (isFirebaseAdmin) {
       let clientSnapshot = null;
-      let followUpSnapshot = null;
-      let recoverySnapshot = null;
+      let followUpSnapshot = new Map();
+      let recoverySnapshot = new Map();
       const publishAdminData = () => {
-        if (!clientSnapshot || !followUpSnapshot || !recoverySnapshot) return;
+        if (!clientSnapshot) return;
         const cloud = {};
         clientSnapshot.forEach(item => { if (item.id !== '_deleted_users') cloud[item.id] = item.data(); });
         followUpSnapshot.forEach(item => {
@@ -1765,31 +1765,51 @@ export default function App() {
         setDb(cloud);
         setDataLoaded(true);
       };
-      const handleAdminSnapshotError = (snapshotError) => {
+      const handleClientSnapshotError = (snapshotError) => {
         warn('Admin Firestore snapshot denied or failed:', snapshotError.message);
         setDb({});
         setDataLoaded(true);
         showErrorRef.current('No se pudieron cargar los clientes. Verifica el rol de administrador en Firebase.');
       };
+      const handleAuxSnapshotError = (collectionName, snapshotError) => {
+        warn(`Admin Firestore ${collectionName} snapshot failed:`, snapshotError.message);
+        showErrorRef.current('No se pudieron cargar algunos datos auxiliares del panel.');
+      };
+      const clientLoadTimeout = setTimeout(() => {
+        if (!clientSnapshot) {
+          setDataLoaded(true);
+          showErrorRef.current('La carga de clientes está tardando demasiado. Comprueba la conexión e inténtalo de nuevo.');
+        }
+      }, 15000);
       const unsubClients = onSnapshot(collection(db_cloud, COLLECTION_NAME), snap => {
         clientSnapshot = snap;
+        clearTimeout(clientLoadTimeout);
         publishAdminData();
-      }, handleAdminSnapshotError);
+      }, snapshotError => {
+        clearTimeout(clientLoadTimeout);
+        handleClientSnapshotError(snapshotError);
+      });
       const unsubFollowUps = onSnapshot(collection(db_cloud, ADMIN_FOLLOWUPS_COLLECTION), snap => {
         followUpSnapshot = snap;
         publishAdminData();
-      }, handleAdminSnapshotError);
+      }, snapshotError => handleAuxSnapshotError(ADMIN_FOLLOWUPS_COLLECTION, snapshotError));
       const unsubRecoveryRequests = onSnapshot(collection(db_cloud, PASSWORD_RECOVERY_COLLECTION), snap => {
         recoverySnapshot = snap;
         publishAdminData();
-      }, handleAdminSnapshotError);
+      }, snapshotError => handleAuxSnapshotError(PASSWORD_RECOVERY_COLLECTION, snapshotError));
       const unsubPublicConfig = onSnapshot(doc(db_cloud, 'athlos_public', 'config'), snap => {
         setCustomExerciseImages(snap.data()?.customExerciseImages || {});
       }, (snapshotError) => {
         warn('Could not load shared exercise images:', snapshotError.message);
         showErrorRef.current('No se pudieron cargar las imágenes compartidas de ejercicios.');
       });
-      return () => { unsubClients(); unsubFollowUps(); unsubRecoveryRequests(); unsubPublicConfig(); };
+      return () => {
+        clearTimeout(clientLoadTimeout);
+        unsubClients();
+        unsubFollowUps();
+        unsubRecoveryRequests();
+        unsubPublicConfig();
+      };
     }
 
     const ownProfileRef = doc(db_cloud, COLLECTION_NAME, loggedInUser);
@@ -2110,6 +2130,21 @@ export default function App() {
       } 
       return { ...u, workoutData: { ...u.workoutData, days } }; 
     });
+  };
+
+  const createExerciseSuperset = (dayId, exerciseIndex) => {
+    const targetClientId = editingClientId || currentClientId;
+    const updatedProfile = setExerciseSuperset(db[targetClientId], dayId, exerciseIndex, true);
+    if (!isFirebaseAdmin || !updatedProfile) {
+      showError('No se pudo crear la superserie. Debe haber dos ejercicios consecutivos sin otra superserie.');
+      return;
+    }
+
+    const exercises = updatedProfile.workoutData.days.find(day => String(day.id) === String(dayId)).exercises;
+    const firstExercise = String(exercises[exerciseIndex]?.name || 'Ejercicio 1');
+    const secondExercise = String(exercises[exerciseIndex + 1]?.name || 'Ejercicio 2');
+    updateUserInCloud(targetClientId, user => setExerciseSuperset(user, dayId, exerciseIndex, true) || user);
+    showSuccess(`Superserie creada: ${firstExercise} + ${secondExercise}`);
   };
   
   const removeExerciseFromDay = (dayId, exIdx) => {
@@ -3236,7 +3271,7 @@ Reglas:
     );
   }
 
-  if (!dataLoaded || !db[currentClientId]) return (
+  if (!dataLoaded || (!isFirebaseAdmin && !db[currentClientId])) return (
     <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-white">
       <Loader2 className="animate-spin text-amber-500 mb-4" size={40} />
       <p className="text-sm text-zinc-400">Cargando datos...</p>
@@ -3487,11 +3522,28 @@ Reglas:
                     {/* HEADER DEL CLIENTE */}
                     <div className={`bg-gradient-to-br ${String(db[editingClientId].color || "from-blue-600")} p-6 rounded-2xl text-white relative`}>
                       <div className="flex justify-end gap-2 mb-5">
-                        <button onClick={() => {
-                          const selectedClient = db[editingClientId];
-                          if (!selectedClient) return;
-                          generatePDFReport(selectedClient, Array.isArray(selectedClient.workoutData?.days) ? selectedClient.workoutData.days : []);
-                        }} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Download size={14}/> PDF</button>
+                        <button
+                          type="button"
+                          disabled={isGeneratingClientPdf}
+                          onClick={async () => {
+                            const selectedClient = db[editingClientId];
+                            if (!selectedClient || isGeneratingClientPdf) return;
+                            setIsGeneratingClientPdf(true);
+                            try {
+                              await generatePDFReport(selectedClient, Array.isArray(selectedClient.workoutData?.days) ? selectedClient.workoutData.days : []);
+                              showSuccess('PDF descargado correctamente.');
+                            } catch (pdfError) {
+                              err('❌ Error generando PDF del cliente:', pdfError.message);
+                              showError('No se pudo generar el PDF. Inténtalo de nuevo.');
+                            } finally {
+                              setIsGeneratingClientPdf(false);
+                            }
+                          }}
+                          className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {isGeneratingClientPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14}/>}
+                          {isGeneratingClientPdf ? 'Generando...' : 'PDF'}
+                        </button>
                         <button onClick={() => { setShowDeleteConfirmModal(true); setClientToDelete(editingClientId); }} className="bg-red-500/30 hover:bg-red-500/40 text-red-200 p-2 rounded-lg transition-all flex items-center gap-1 text-[9px] font-bold uppercase"><Trash2 size={14}/> Eliminar</button>
                       </div>
                       <div className="space-y-6">
@@ -3796,21 +3848,26 @@ Reglas:
                                       if (isSuperset) {
                                         const ex2 = exercises[idx + 1];
                                         rendered.push(
-                                          <div key={idx} className="relative border-2 border-purple-500/40 rounded-[2.5rem] p-2 bg-purple-500/5">
-                                            <div className="flex items-center justify-center gap-2 py-2 mb-2">
+                                          <div key={idx} className="relative border-2 border-purple-500/60 rounded-[2.5rem] p-2 bg-purple-500/10 shadow-lg shadow-purple-950/30">
+                                            <div className="flex flex-col items-center justify-center gap-1 py-3 mb-2">
+                                              <span className="rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-purple-200 flex items-center gap-1.5"><Zap size={12}/> Superserie · 2 ejercicios</span>
+                                              <span className="text-[9px] font-semibold text-purple-300/80">Realiza el segundo ejercicio seguido, sin descanso</span>
+                                            </div>
+                                            <div className="flex items-center justify-center gap-2 pb-2">
                                               <div className="h-px flex-1 bg-purple-500/30" />
-                                              <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Zap size={12}/> Superserie</span>
+                                              <span className="text-[9px] font-black uppercase tracking-widest text-purple-300">Bloque unido</span>
                                               <div className="h-px flex-1 bg-purple-500/30" />
                                             </div>
                                             {[ex, ex2].map((ssEx, ssI) => {
                                               const realIdx = idx + ssI;
                                               return (
-                                                <div key={realIdx} className={`bg-zinc-900 rounded-[2rem] border border-zinc-800 overflow-hidden shadow-lg ${ssI === 0 ? 'mb-2' : ''}`}>
+                                                <div key={realIdx} className={`bg-zinc-900 rounded-[2rem] border border-purple-500/20 overflow-hidden shadow-lg ${ssI === 0 ? 'mb-2' : ''}`}>
+                                                  <div className="bg-purple-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-wider text-purple-200">Ejercicio {ssI + 1} de la superserie</div>
                                                   {renderAdminExerciseCard(ssEx, realIdx, exercises)}
                                                 </div>
                                               );
                                             })}
-                                            <button onClick={() => modifyExerciseData(editingDayId, idx, 'superset', false)} className="w-full mt-2 py-2 text-[9px] font-bold text-purple-400 hover:text-purple-300 uppercase flex items-center justify-center gap-1"><X size={12}/> Quitar superserie</button>
+                                            <button type="button" onClick={() => modifyExerciseData(editingDayId, idx, 'superset', false)} className="w-full mt-2 py-2 text-[9px] font-bold text-purple-300 hover:text-white uppercase flex items-center justify-center gap-1"><X size={12}/> Quitar superserie</button>
                                           </div>
                                         );
                                         idx += 2;
@@ -3821,7 +3878,14 @@ Reglas:
                                               {renderAdminExerciseCard(ex, idx, exercises)}
                                             </div>
                                             {idx < exercises.length - 1 && !(exercises[idx + 1]?.superset === true || exercises[idx + 1]?.superset === 'true') && !(idx > 0 && (exercises[idx - 1]?.superset === true || exercises[idx - 1]?.superset === 'true')) && (
-                                              <button onClick={() => modifyExerciseData(editingDayId, idx, 'superset', true)} className="w-full mt-2 py-1.5 text-[9px] font-bold text-zinc-600 hover:text-purple-400 uppercase flex items-center justify-center gap-1 transition-colors"><Zap size={10}/> Hacer superserie con siguiente</button>
+                                              <button
+                                                type="button"
+                                                aria-label={`Crear superserie: ${String(ex.name || 'ejercicio')} y ${String(exercises[idx + 1]?.name || 'siguiente ejercicio')}`}
+                                                onClick={() => createExerciseSuperset(editingDayId, idx)}
+                                                className="w-full mt-2 rounded-xl border border-purple-500/30 bg-purple-500/10 py-2.5 text-[10px] font-black text-purple-300 hover:border-purple-400/70 hover:bg-purple-500/20 hover:text-white uppercase flex items-center justify-center gap-2 transition-colors"
+                                              >
+                                                <Zap size={12}/> Crear superserie con el siguiente ejercicio
+                                              </button>
                                             )}
                                           </div>
                                         );
@@ -4333,15 +4397,25 @@ Reglas:
                   const nextEx = filtered[i + 1];
                   const nextOriginalIdx = allExercises.indexOf(nextEx);
                   items.push(
-                    <div key={`ss-${liveDay.id}-${originalIdx}`} className="rounded-[2rem] border-2 border-purple-500/30 bg-purple-500/5 p-3 space-y-3">
-                      <div className="flex items-center justify-center gap-2 py-1">
+                    <div key={`ss-${liveDay.id}-${originalIdx}`} className="rounded-[2rem] border-2 border-purple-500/50 bg-purple-500/10 p-3 space-y-3 shadow-lg shadow-purple-950/20">
+                      <div className="flex flex-col items-center gap-1 py-2">
+                        <span className="rounded-full border border-purple-400/30 bg-purple-500/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-purple-200 flex items-center gap-1.5"><Zap size={12}/> Superserie · 2 ejercicios</span>
+                        <span className="text-[9px] font-semibold text-purple-300/80">Hazlos seguidos, sin descanso entre ellos</span>
+                      </div>
+                      <div className="flex items-center justify-center gap-2">
                         <div className="h-px flex-1 bg-purple-500/20" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-purple-400 flex items-center gap-1.5"><Zap size={12}/> Superserie</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-purple-300">Bloque unido</span>
                         <div className="h-px flex-1 bg-purple-500/20" />
                       </div>
+                      <div className="overflow-hidden rounded-[2rem] border border-purple-500/20 bg-zinc-900">
+                        <div className="bg-purple-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-wider text-purple-200">Ejercicio 1 de la superserie</div>
                       <ExerciseCard key={`${liveDay.id}-${originalIdx}`} ex={ex} customExerciseImages={customExerciseImages} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[ex.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
-                      <div className="flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center"><Zap size={14} className="text-purple-400"/></div></div>
+                      </div>
+                      <div className="flex items-center justify-center"><div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center"><Zap size={14} className="text-purple-300"/></div></div>
+                      <div className="overflow-hidden rounded-[2rem] border border-purple-500/20 bg-zinc-900">
+                        <div className="bg-purple-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-wider text-purple-200">Ejercicio 2 de la superserie</div>
                       <ExerciseCard key={`${liveDay.id}-${nextOriginalIdx}`} ex={nextEx} customExerciseImages={customExerciseImages} workoutLogs={workoutLogs} isAdmin={isAdminMode} onAddLog={addLogRecord} onUpdateLog={updateLogRecord} onDeleteLog={deleteLogRecord} onStartTimer={startTimerHook} accentColor={client.color} onUpdateImage={updateImageHook} onOpenImageManager={openImageManagerCb} dayId={liveDay.id} dayTitle={liveDay.title} onAddExerciseNote={addExerciseNote} exerciseNotes={client.exerciseNotes?.[nextEx.name] || []} exerciseFeedback={client.exerciseFeedback || []} onAddExerciseFeedback={addExerciseFeedback} canSubmitFeedback={!isFirebaseAdmin} palette={palette} />
+                      </div>
                     </div>
                   );
                   i += 2;

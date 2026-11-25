@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendExerciseToWorkoutDay, removeExerciseFromWorkoutDay } from '../src/utils/workoutExercises.js';
+import { appendExerciseToWorkoutDay, removeExerciseFromWorkoutDay, setExerciseSuperset } from '../src/utils/workoutExercises.js';
 
 const profile = {
   username: 'test-client',
@@ -22,6 +22,25 @@ test('adds an exercise to the selected day without mutating the profile', () => 
 
 test('rejects adding to a day that no longer exists', () => {
   assert.equal(appendExerciseToWorkoutDay(profile, 99, { name: 'Peso muerto' }), null);
+});
+
+test('creates a superserie between consecutive exercises without mutating the profile', () => {
+  const result = setExerciseSuperset(profile, '12', 0, true);
+
+  assert.equal(result.workoutData.days[0].exercises[0].superset, true);
+  assert.equal(result.workoutData.days[0].exercises[1].superset, undefined);
+  assert.equal(profile.workoutData.days[0].exercises[0].superset, undefined);
+});
+
+test('rejects a superserie without a following exercise or overlapping pair', () => {
+  assert.equal(setExerciseSuperset(profile, 12, 1, true), null);
+  const existingPair = {
+    workoutData: {
+      days: [{ id: 12, exercises: [{ name: 'Press', superset: true }, { name: 'Aperturas' }, { name: 'Cruce' }] }]
+    }
+  };
+
+  assert.equal(setExerciseSuperset(existingPair, 12, 1, true), null);
 });
 
 test('removes exactly the selected exercise without mutating other days', () => {
