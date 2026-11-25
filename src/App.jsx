@@ -3299,7 +3299,8 @@ Reglas:
         onNavigateBack={() => {
           if (editingDayId !== null) { setEditingDayId(null); setNewEx({ name: "", s: 3, r: "12", tip: "", mus: "", yt: "", img: "" }); setAddingNewMusGroup(false); setSelectedMusculoGroup(""); }
           else if (isEditingClientRoutine) { setIsEditingClientRoutine(false); setEditingClientId(null); setCurrentClientId('entrenador'); setIsAdminMode(true); }
-          else if (selectedDay !== null) { setSelectedDay(null); }
+          else if (selectedDayExerciseIndex !== null) { setSelectedDayExerciseIndex(null); }
+          else if (selectedDay !== null) { navigateTo("home"); }
           else { navigateTo("home"); }
         }}
         onExit={() => signOutUser()}
@@ -3319,15 +3320,9 @@ Reglas:
         </div>
 
         {activeTab === "home" && (
-          <div className="space-y-5 animate-in fade-in duration-500">
+          <div className={`${isAdminMode ? 'space-y-3' : 'space-y-5'} animate-in fade-in duration-500`}>
             
-            {/* NEW: Athlos Premium Brand Header with Logo & Daily Phrase */}
-            <AthlosBrandHeader 
-              dailyPhrase={dailyMotivationalPhrase}
-              colorPalette={getPaletteById(preferredPaletteId)}
-              isAdmin={isAdminMode}
-              onAdminEditPhrase={saveMotivationalPhrase}
-            />
+            <AthlosBrandHeader />
             
             {isAdminMode ? (
               <div className="relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-zinc-900 via-zinc-900/90 to-black p-5 text-white shadow-xl">
